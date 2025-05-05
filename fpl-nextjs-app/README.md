@@ -110,5 +110,3 @@ When deploying to Railway:
 - Add all required environment variables to your Railway project
 - Set up Redis as a service
 - The database setup scripts can be run as part of your deployment process
-
-Test test 123
