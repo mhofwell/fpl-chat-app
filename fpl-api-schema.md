@@ -1,8 +1,8 @@
 # Fantasy Premiere League API Description
 
-Here are the API endpoints that we use to get data about players, points, fixtures, leagues, etc. 
+Here are the API endpoints that we use to get data about players, points, fixtures, leagues, etc.
 
-BASE_URL=https://fantasy.premierleague.com/api/ 
+BASE_URL=https://fantasy.premierleague.com/api/
 
 # Available endpoints:
 
@@ -12,6 +12,7 @@ BASE_URL=https://fantasy.premierleague.com/api/
 
 This endpoint returns general information about the FPL game divided into these sections:
 
+```json
 {
     "events":[
         ...
@@ -26,8 +27,11 @@ This endpoint returns general information about the FPL game divided into these 
         ...
     ]
 }
+```
 
 Events: Basic information of every Gameweek such as average score, highest score, top scoring player, most captained, etc.
+
+```json
 "events": [
     {
         "id": 1,
@@ -79,8 +83,11 @@ Events: Basic information of every Gameweek such as average score, highest score
     },
     ...
 ]
+```
 
 Teams: Basic information of current Premier League clubs.
+
+```json
 "teams": [
         {
             "code": 3,
@@ -107,8 +114,11 @@ Teams: Basic information of current Premier League clubs.
         },
         ...
 ]
+```
 
-Element_types: Basic information about player’s position (GK, DEF, MID, FWD).
+Element_types: Basic information about player's position (GK, DEF, MID, FWD).
+
+```json
 "element_types": [
         {
             "id": 1,
@@ -129,8 +139,11 @@ Element_types: Basic information about player’s position (GK, DEF, MID, FWD).
         },
         ...
 ]
+```
 
 Elements: Information of all Premier League players including points, status, value, match stats (goals, assists, etc.), ICT index, etc.
+
+```json
 "elements": [
         {
             "can_transact": true,
@@ -239,13 +252,16 @@ Elements: Information of all Premier League players including points, status, va
         },
         ...
 ]
-
+```
 
 ### 2. Fixtures
-   Endpoint path: fixtures/
-   Full URL: https://fantasy.premierleague.com/api/fixtures/
+
+Endpoint path: fixtures/
+Full URL: https://fantasy.premierleague.com/api/fixtures/
 
 This endpoint returns a JSON array which contains every fixture of the season:
+
+```json
 [
     {
         "code": 2444470,
@@ -515,571 +531,414 @@ This endpoint returns a JSON array which contains every fixture of the season:
         "team_h_difficulty": 3,
         "team_a_difficulty": 3,
         "pulse_id": 115827
-    },
+    }
+]
+```
 
 To get fixtures for specific Gameweek, you can add a parameter after the endpoint path (ex: fixtures?event=7). You will get an array of objects in this format:
 
+```json
 {
-"code": 2444535,
-"event": 7,
-"finished": true,
-"finished_provisional": true,
-"id": 66,
-"kickoff_time": "2024-10-05T11:30:00Z",
-"minutes": 90,
-"provisional_start_time": false,
-"started": true,
-"team_a": 12,
-"team_a_score": 1,
-"team_h": 7,
-"team_h_score": 0,
-"stats": [
-{
-"identifier": "goals_scored",
-"a": [
-{
-"value": 1,
-"element": 317
+    "code": 2444535,
+    "event": 7,
+    "finished": true,
+    "finished_provisional": true,
+    "id": 66,
+    "kickoff_time": "2024-10-05T11:30:00Z",
+    "minutes": 90,
+    "provisional_start_time": false,
+    "started": true,
+    "team_a": 12,
+    "team_a_score": 1,
+    "team_h": 7,
+    "team_h_score": 0,
+    "stats": [
+        {
+            "identifier": "goals_scored",
+            "a": [
+                {
+                    "value": 1,
+                    "element": 317
+                }
+            ],
+            "h": []
+        },
+        {
+            "identifier": "assists",
+            "a": [
+                {
+                    "value": 1,
+                    "element": 321
+                }
+            ],
+            "h": []
+        },
+        {
+            "identifier": "own_goals",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "penalties_saved",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "penalties_missed",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "yellow_cards",
+            "a": [
+                {
+                    "value": 1,
+                    "element": 321
+                },
+                {
+                    "value": 1,
+                    "element": 329
+                }
+            ],
+            "h": [
+                {
+                    "value": 1,
+                    "element": 11
+                },
+                {
+                    "value": 1,
+                    "element": 203
+                },
+                {
+                    "value": 1,
+                    "element": 206
+                },
+                {
+                    "value": 1,
+                    "element": 585
+                }
+            ]
+        },
+        {
+            "identifier": "red_cards",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "saves",
+            "a": [
+                {
+                    "value": 4,
+                    "element": 310
+                },
+                {
+                    "value": 1,
+                    "element": 660
+                }
+            ],
+            "h": [
+                {
+                    "value": 3,
+                    "element": 201
+                }
+            ]
+        },
+        {
+            "identifier": "bonus",
+            "a": [
+                {
+                    "value": 3,
+                    "element": 310
+                },
+                {
+                    "value": 2,
+                    "element": 311
+                },
+                {
+                    "value": 2,
+                    "element": 339
+                }
+            ],
+            "h": []
+        },
+        {
+            "identifier": "bps",
+            "a": [
+                {
+                    "value": 32,
+                    "element": 310
+                },
+                {
+                    "value": 31,
+                    "element": 311
+                },
+                {
+                    "value": 31,
+                    "element": 339
+                },
+                {
+                    "value": 30,
+                    "element": 321
+                },
+                {
+                    "value": 26,
+                    "element": 337
+                },
+                {
+                    "The rest of the objects..."
+                },
+
+            ],
+            "h": [
+                {
+                    "value": 22,
+                    "element": 196
+                },
+                {
+                    "value": 13,
+                    "element": 200
+                },
+                {
+                    "value": 12,
+                    "element": 201
+                },
+                {
+                    "value": 10,
+                    "element": 199
+                },
+                {
+                    "The rest of the objects..."
+                },
+            ]
+        },
+        {
+            "identifier": "mng_underdog_win",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "mng_underdog_draw",
+            "a": [],
+            "h": []
+        }
+    ],
+    "team_h_difficulty": 5,
+    "team_a_difficulty": 3,
+    "pulse_id": 115892
 }
-],
-"h": []
-},
-{
-"identifier": "assists",
-"a": [
-{
-"value": 1,
-"element": 321
-}
-],
-"h": []
-},
-{
-"identifier": "own_goals",
-"a": [],
-"h": []
-},
-{
-"identifier": "penalties_saved",
-"a": [],
-"h": []
-},
-{
-"identifier": "penalties_missed",
-"a": [],
-"h": []
-},
-{
-"identifier": "yellow_cards",
-"a": [
-{
-"value": 1,
-"element": 321
-},
-{
-"value": 1,
-"element": 329
-}
-],
-"h": [
-{
-"value": 1,
-"element": 11
-},
-{
-"value": 1,
-"element": 203
-},
-{
-"value": 1,
-"element": 206
-},
-{
-"value": 1,
-"element": 585
-}
-]
-},
-{
-"identifier": "red_cards",
-"a": [],
-"h": []
-},
-{
-"identifier": "saves",
-"a": [
-{
-"value": 4,
-"element": 310
-},
-{
-"value": 1,
-"element": 660
-}
-],
-"h": [
-{
-"value": 3,
-"element": 201
-}
-]
-},
-{
-"identifier": "bonus",
-"a": [
-{
-"value": 3,
-"element": 310
-},
-{
-"value": 2,
-"element": 311
-},
-{
-"value": 2,
-"element": 339
-}
-],
-"h": []
-},
-{
-"identifier": "bps",
-"a": [
-{
-"value": 32,
-"element": 310
-},
-{
-"value": 31,
-"element": 311
-},
-{
-"value": 31,
-"element": 339
-},
-{
-"value": 30,
-"element": 321
-},
-{
-"value": 26,
-"element": 337
-},
-{
-"value": 23,
-"element": 326
-},
-{
-"value": 19,
-"element": 317
-},
-{
-"value": 18,
-"element": 323
-},
-{
-"value": 14,
-"element": 324
-},
-{
-"value": 9,
-"element": 336
-},
-{
-"value": 6,
-"element": 660
-},
-{
-"value": 5,
-"element": 328
-},
-{
-"value": 4,
-"element": 320
-},
-{
-"value": 4,
-"element": 327
-},
-{
-"value": 3,
-"element": 335
-}
-],
-"h": [
-{
-"value": 22,
-"element": 196
-},
-{
-"value": 13,
-"element": 200
-},
-{
-"value": 12,
-"element": 201
-},
-{
-"value": 10,
-"element": 199
-},
-{
-"value": 10,
-"element": 650
-},
-{
-"value": 9,
-"element": 207
-},
-{
-"value": 8,
-"element": 11
-},
-{
-"value": 8,
-"element": 585
-},
-{
-"value": 6,
-"element": 210
-},
-{
-"value": 4,
-"element": 206
-},
-{
-"value": 3,
-"element": 205
-},
-{
-"value": 3,
-"element": 216
-},
-{
-"value": 2,
-"element": 159
-},
-{
-"value": 2,
-"element": 211
-},
-{
-"value": -2,
-"element": 203
-}
-]
-},
-{
-"identifier": "mng_underdog_win",
-"a": [],
-"h": []
-},
-{
-"identifier": "mng_underdog_draw",
-"a": [],
-"h": []
-}
-],
-"team_h_difficulty": 5,
-"team_a_difficulty": 3,
-"pulse_id": 115892
-},
+```
 
 You can also request only the upcoming fixtures using future parameter (ex: fixtures?future=1) you will get an array of objects in this format:
 
+```json
 {
-"code": 2444821,
-"event": 36,
-"finished": false,
-"finished_provisional": false,
-"id": 352,
-"kickoff_time": "2025-05-10T14:00:00Z",
-"minutes": 0,
-"provisional_start_time": false,
-"started": false,
-"team_a": 8,
-"team_a_score": null,
-"team_h": 9,
-"team_h_score": null,
-"stats": [],
-"team_h_difficulty": 3,
-"team_a_difficulty": 3,
-"pulse_id": 116178
-},
+    "code": 2444821,
+    "event": 36,
+    "finished": false,
+    "finished_provisional": false,
+    "id": 352,
+    "kickoff_time": "2025-05-10T14:00:00Z",
+    "minutes": 0,
+    "provisional_start_time": false,
+    "started": false,
+    "team_a": 8,
+    "team_a_score": null,
+    "team_h": 9,
+    "team_h_score": null,
+    "stats": [],
+    "team_h_difficulty": 3,
+    "team_a_difficulty": 3,
+    "pulse_id": 116178
+}
+```
 
 If you set the future value to 0, you will get all fixtures, but if 1 you will only get the upcoming fixtures. You will get an array of objects:
 
+```json
 {
-"code": 2444470,
-"event": 1,
-"finished": true,
-"finished_provisional": true,
-"id": 1,
-"kickoff_time": "2024-08-16T19:00:00Z",
-"minutes": 90,
-"provisional_start_time": false,
-"started": true,
-"team_a": 9,
-"team_a_score": 0,
-"team_h": 14,
-"team_h_score": 1,
-"stats": [
-{
-"identifier": "goals_scored",
-"a": [],
-"h": [
-{
-"value": 1,
-"element": 389
-}
-]
-},
-{
-"identifier": "assists",
-"a": [],
-"h": [
-{
-"value": 1,
-"element": 372
-}
-]
-},
-{
-"identifier": "own_goals",
-"a": [],
-"h": []
-},
-{
-"identifier": "penalties_saved",
-"a": [],
-"h": []
-},
-{
-"identifier": "penalties_missed",
-"a": [],
-"h": []
-},
-{
-"identifier": "yellow_cards",
-"a": [
-{
-"value": 1,
-"element": 240
-},
-{
-"value": 1,
-"element": 241
-},
-{
-"value": 1,
-"element": 243
-}
-],
-"h": [
-{
-"value": 1,
-"element": 377
-},
-{
-"value": 1,
-"element": 382
-}
-]
-},
-{
-"identifier": "red_cards",
-"a": [],
-"h": []
-},
-{
-"identifier": "saves",
-"a": [
-{
-"value": 4,
-"element": 248
-}
-],
-"h": [
-{
-"value": 2,
-"element": 383
-}
-]
-},
-{
-"identifier": "bonus",
-"a": [],
-"h": [
-{
-"value": 3,
-"element": 389
-},
-{
-"value": 2,
-"element": 594
-},
-{
-"value": 1,
-"element": 369
-},
-{
-"value": 1,
-"element": 380
-}
-]
-},
-{
-"identifier": "bps",
-"a": [
-{
-"value": 16,
-"element": 249
-},
-{
-"value": 15,
-"element": 240
-},
-{
-"value": 15,
-"element": 255
-},
-{
-"value": 13,
-"element": 245
-},
-{
-"value": 12,
-"element": 248
-},
-{
-"value": 11,
-"element": 19
-},
-{
-"value": 10,
-"element": 251
-},
-{
-"value": 7,
-"element": 257
-},
-{
-"value": 5,
-"element": 239
-},
-{
-"value": 5,
-"element": 241
-},
-{
-"value": 5,
-"element": 247
-},
-{
-"value": 4,
-"element": 254
-},
-{
-"value": 4,
-"element": 259
-},
-{
-"value": 3,
-"element": 252
-},
-{
-"value": 2,
-"element": 243
-},
-{
-"value": 2,
-"element": 256
-}
-],
-"h": [
-{
-"value": 33,
-"element": 389
-},
-{
-"value": 32,
-"element": 594
-},
-{
-"value": 26,
-"element": 369
-},
-{
-"value": 26,
-"element": 380
-},
-{
-"value": 25,
-"element": 383
-},
-{
-"value": 22,
-"element": 377
-},
-{
-"value": 21,
-"element": 378
-},
-{
-"value": 19,
-"element": 368
-},
-{
-"value": 11,
-"element": 364
-},
-{
-"value": 11,
-"element": 372
-},
-{
-"value": 10,
-"element": 366
-},
-{
-"value": 5,
-"element": 385
-},
-{
-"value": 3,
-"element": 381
-},
-{
-"value": 3,
-"element": 593
-},
-{
-"value": 2,
-"element": 371
-},
-{
-"value": -1,
-"element": 382
-}
-]
-},
-{
-"identifier": "mng_underdog_win",
-"a": [],
-"h": []
-},
-{
-"identifier": "mng_underdog_draw",
-"a": [],
-"h": []
-}
-],
-"team_h_difficulty": 3,
-"team_a_difficulty": 3,
-"pulse_id": 115827
-},
+    "code": 2444470,
+    "event": 1,
+    "finished": true,
+    "finished_provisional": true,
+    "id": 1,
+    "kickoff_time": "2024-08-16T19:00:00Z",
+    "minutes": 90,
+    "provisional_start_time": false,
+    "started": true,
+    "team_a": 9,
+    "team_a_score": 0,
+    "team_h": 14,
+    "team_h_score": 1,
+    "stats": [
+        {
+            "identifier": "goals_scored",
+            "a": [],
+            "h": [
+                {
+                    "value": 1,
+                    "element": 389
+                }
+            ]
+        },
+        {
+            "identifier": "assists",
+            "a": [],
+            "h": [
+                {
+                    "value": 1,
+                    "element": 372
+                }
+            ]
+        },
+        {
+            "identifier": "own_goals",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "penalties_saved",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "penalties_missed",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "yellow_cards",
+            "a": [
+                {
+                    "value": 1,
+                    "element": 240
+                },
+                {
+                    "value": 1,
+                    "element": 241
+                },
+                {
+                    "value": 1,
+                    "element": 243
+                }
+            ],
+            "h": [
+                {
+                    "value": 1,
+                    "element": 377
+                },
+                {
+                    "value": 1,
+                    "element": 382
+                }
+            ]
+        },
+        {
+            "identifier": "red_cards",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "saves",
+            "a": [
+                {
+                    "value": 4,
+                    "element": 248
+                }
+            ],
+            "h": [
+                {
+                    "value": 2,
+                    "element": 383
+                }
+            ]
+        },
+        {
+            "identifier": "bonus",
+            "a": [],
+            "h": [
+                {
+                    "value": 3,
+                    "element": 389
+                },
+                {
+                    "value": 2,
+                    "element": 594
+                },
+                {
+                    "value": 1,
+                    "element": 369
+                },
+                {
+                    "value": 1,
+                    "element": 380
+                }
+            ]
+        },
+        {
+            "identifier": "bps",
+            "a": [
+                {
+                    "value": 16,
+                    "element": 249
+                },
+                {
+                    "value": 15,
+                    "element": 240
+                },
+                {
+                    "value": 15,
+                    "element": 255
+                },
+                {
+                    "value": 13,
+                    "element": 245
+                },
+                {
+                    "The rest of the objects..."
+                },
+            ],
+            "h": [
+                {
+                    "value": 33,
+                    "element": 389
+                },
+                {
+                    "value": 32,
+                    "element": 594
+                },
+                {
+                    "value": 26,
+                    "element": 369
+                },
+                {
+                    "value": 26,
+                    "element": 380
+                },
+                {
+                    "The rest of the objects..."
+                }
 
-Here’s the explanation of some of the JSON elements:
+            ]
+        },
+        {
+            "identifier": "mng_underdog_win",
+            "a": [],
+            "h": []
+        },
+        {
+            "identifier": "mng_underdog_draw",
+            "a": [],
+            "h": []
+        }
+    ],
+    "team_h_difficulty": 3,
+    "team_a_difficulty": 3,
+    "pulse_id": 115827
+}
+
+```
+
+Here's the explanation of some of the JSON elements:
 
 -   "event" refers to the event id in events section of the bootstrap-static data.
 -   "team_a" away team and "team_h" home team refers to the team id in teams section of the bootstrap-static data.
@@ -1087,13 +946,15 @@ Here’s the explanation of some of the JSON elements:
 -   "stats" contains a list of match facts that affect points of a player. It consists of "goals_scored", "assists", "own_goals", "penalties_saved", "penalties_missed", "yellow_cards", "red_cards", "saves", "bonus", and bps data.
 -   "value" is the amount and "element" refers to the element id in elements section of the bootstrap-static data.
 
-### 3. Player’s Detailed Data
-   Endpoint path: element-summary/{element_id}/
-   Full URL: https://fantasy.premierleague.com/api/element-summary/{element_id}/
-   Example: https://fantasy.premierleague.com/api/element-summary/4/
+### 3. Player's Detailed Data
 
-This endpoint returns a player’s detailed information divided into 3 sections:
+Endpoint path: element-summary/{element_id}/
+Full URL: https://fantasy.premierleague.com/api/element-summary/{element_id}/
+Example: https://fantasy.premierleague.com/api/element-summary/4/
 
+This endpoint returns a player's detailed information divided into 3 sections:
+
+```json
 {
     "fixtures":[
         ...
@@ -1105,115 +966,38 @@ This endpoint returns a player’s detailed information divided into 3 sections:
         ...
     ]
 }
+```
 
-Fixtures: A list of player’s remaining fixtures of the season. Each fixture object consists of these information below:
+Fixtures: A list of player's remaining fixtures of the season. Each fixture object consists of these information below:
 
-"fixtures": [
+```json
 {
-"id": 354,
-"code": 2444823,
-"team_h": 12,
-"team_h_score": null,
-"team_a": 1,
-"team_a_score": null,
-"event": 36,
-"finished": false,
-"minutes": 0,
-"provisional_start_time": false,
-"kickoff_time": "2025-05-11T15:30:00Z",
-"event_name": "Gameweek 36",
-"is_home": false,
-"difficulty": 5
-},
-"history": [
-{
-"element": 4,
-"fixture": 2,
-"opponent_team": 20,
-"total_points": 12,
-"was_home": true,
-"kickoff_time": "2024-08-17T14:00:00Z",
-"team_h_score": 2,
-"team_a_score": 0,
-"round": 1,
-"modified": false,
-"minutes": 90,
-"goals_scored": 1,
-"assists": 1,
-"clean_sheets": 1,
-"goals_conceded": 0,
-"own_goals": 0,
-"penalties_saved": 0,
-"penalties_missed": 0,
-"yellow_cards": 0,
-"red_cards": 0,
-"saves": 0,
-"bonus": 3,
-"bps": 48,
-"influence": "54.8",
-"creativity": "24.1",
-"threat": "46.0",
-"ict_index": "12.5",
-"starts": 1,
-"expected_goals": "0.45",
-"expected_assists": "0.04",
-"expected_goal_involvements": "0.49",
-"expected_goals_conceded": "0.47",
-"mng_win": 0,
-"mng_draw": 0,
-"mng_loss": 0,
-"mng_underdog_win": 0,
-"mng_underdog_draw": 0,
-"mng_clean_sheets": 0,
-"mng_goals_scored": 0,
-"value": 80,
-"transfers_balance": 0,
-"selected": 1087445,
-"transfers_in": 0,
-"transfers_out": 0
-},
-"history_past": [
-{
-"season_name": "2020/21",
-"element_code": 219847,
-"start_cost": 85,
-"end_cost": 83,
-"total_points": 91,
-"minutes": 1512,
-"goals_scored": 4,
-"assists": 6,
-"clean_sheets": 8,
-"goals_conceded": 15,
-"own_goals": 0,
-"penalties_saved": 0,
-"penalties_missed": 0,
-"yellow_cards": 2,
-"red_cards": 0,
-"saves": 0,
-"bonus": 3,
-"bps": 268,
-"influence": "325.0",
-"creativity": "307.7",
-"threat": "514.0",
-"ict_index": "114.2",
-"starts": 0,
-"expected_goals": "0.00",
-"expected_assists": "0.00",
-"expected_goal_involvements": "0.00",
-"expected_goals_conceded": "0.00",
-"mng_win": 0,
-"mng_draw": 0,
-"mng_loss": 0,
-"mng_underdog_win": 0,
-"mng_underdog_draw": 0,
-"mng_clean_sheets": 0,
-"mng_goals_scored": 0
-},
-...
-]
+    "fixtures": [
+        {
+            "id": 354,
+            "code": 2444823,
+            "team_h": 12,
+            "team_h_score": null,
+            "team_a": 1,
+            "team_a_score": null,
+            "event": 36,
+            "finished": false,
+            "minutes": 0,
+            "provisional_start_time": false,
+            "kickoff_time": "2025-05-11T15:30:00Z",
+            "event_name": "Gameweek 36",
+            "is_home": false,
+            "difficulty": 5
+        }
+    ]
+}
+```
 
-History: A list of player’s previous fixtures and its match stats.
-"history": [
+History: A list of player's previous fixtures and its match stats.
+
+```json
+{
+    "history": [
         {
             "element": 4,
             "fixture": 2,
@@ -1259,12 +1043,16 @@ History: A list of player’s previous fixtures and its match stats.
             "selected": 1087445,
             "transfers_in": 0,
             "transfers_out": 0
-        },
-        ...
-]
+        }
+    ]
+}
+```
 
-History_past: A list of player’s previous seasons and its seasonal stats.
-"history_past": [
+History_past: A list of player's previous seasons and its seasonal stats.
+
+```json
+{
+    "history_past": [
         {
             "season_name": "2020/21",
             "element_code": 219847,
@@ -1300,14 +1088,18 @@ History_past: A list of player’s previous seasons and its seasonal stats.
             "mng_underdog_draw": 0,
             "mng_clean_sheets": 0,
             "mng_goals_scored": 0
-        },
-        ...
-]
+        }
+    ]
+}
+```
 
 ### 4. Gameweek Live Data
+
 Endpoint path: event/4/live/
 Full URL: https://fantasy.premierleague.com/api/event/{event_id}/live/
 Example: https://fantasy.premierleague.com/api/event/4/live/
+
+```json
 {
     "elements": [
         {
@@ -1359,62 +1151,63 @@ Example: https://fantasy.premierleague.com/api/event/4/live/
                 }
             ],
             "modified": false
-        },
-        ...
+        }
     ]
 }
+```
 
-- "id": Refers to the element id in elements section of the bootstrap-static data.
-- "stats": Player’s match stats including goals, assists, etc.
-- "explain": Breakdown of a player’s event points. 
+-   "id": Refers to the element id in elements section of the bootstrap-static data.
+-   "stats": Player's match stats including goals, assists, etc.
+-   "explain": Breakdown of a player's event points.
 
 ## 5. Set Piece Taker Notes
+
     Endpoint path: team/set-piece-notes/
     Full URL: https://fantasy.premierleague.com/api/team/set-piece-notes/
-A set piece in soccer occurs when a dead ball is put into play after a stoppage. Corners, free kicks, penalty kicks, goal kicks, and throw-ins are all examples of set pieces in soccer. The most effective set pieces often lead to shots on target. This endpoint gives information based on team "id" as to news and updates related to who and when a dead ball was put into play. 
 
-Information of each team’s set piece taker updates or confirmation. id refers to the team_id.
+A set piece in soccer occurs when a dead ball is put into play after a stoppage. Corners, free kicks, penalty kicks, goal kicks, and throw-ins are all examples of set pieces in soccer. The most effective set pieces often lead to shots on target. This endpoint gives information based on team "id" as to news and updates related to who and when a dead ball was put into play.
 
+Information of each team's set piece taker updates or confirmation. id refers to the team_id.
+
+```json
 {
-"last_updated": "2024-12-11T13:21:16Z",
-"teams": [
-    {
-        "notes": [
-            {
-                "external_link": true,
-                "info_message": "Bukayo Saka, Kai Havertz, Martin Odegaard and Fabio Vieira all scored spot-kicks in the first half of 2023/24. Mikel Arteta later said that the players decide themselves on the pitch who takes penalties.",
-                "source_link": ""
-            },
-            {
-                "external_link": true,
-                "info_message": "Saka took the last four penalties of 2023/24, suggesting he's first in line.",
-                "source_link": ""
-            }
-        ],
-        "id": 1
-    },
-    {
-        "notes": [
-            {
-                "external_link": true,
-                "info_message": "Douglas Luiz was on penalties in 2023/24 but has now left the club.",
-                "source_link": ""
-            },
-            {
-                "external_link": true,
-                "info_message": "Youri Tielemans took and missed Aston Villa's first spot-kick of 2024/25 in Gameweek 12. Ollie Watkins then took and scored one in Gameweek 14.",
-                "source_link": ""
-            },
-            {
-                "external_link": true,
-                "info_message": "Ollie Watkins had previously taken two penalties in 2022/23, missing one.",
-                "source_link": ""
-            }
-        ],
-        "id": 2
-    },
-    ...
-]
-
-
-
+    "last_updated": "2024-12-11T13:21:16Z",
+    "teams": [
+        {
+            "notes": [
+                {
+                    "external_link": true,
+                    "info_message": "Bukayo Saka, Kai Havertz, Martin Odegaard and Fabio Vieira all scored spot-kicks in the first half of 2023/24. Mikel Arteta later said that the players decide themselves on the pitch who takes penalties.",
+                    "source_link": ""
+                },
+                {
+                    "external_link": true,
+                    "info_message": "Saka took the last four penalties of 2023/24, suggesting he's first in line.",
+                    "source_link": ""
+                }
+            ],
+            "id": 1
+        },
+        {
+            "notes": [
+                {
+                    "external_link": true,
+                    "info_message": "Douglas Luiz was on penalties in 2023/24 but has now left the club.",
+                    "source_link": ""
+                },
+                {
+                    "external_link": true,
+                    "info_message": "Youri Tielemans took and missed Aston Villa's first spot-kick of 2024/25 in Gameweek 12. Ollie Watkins then took and scored one in Gameweek 14.",
+                    "source_link": ""
+                },
+                {
+                    "external_link": true,
+                    "info_message": "Ollie Watkins had previously taken two penalties in 2022/23, missing one.",
+                    "source_link": ""
+                }
+            ],
+            "id": 2
+        }
+    ]
+}
+```
