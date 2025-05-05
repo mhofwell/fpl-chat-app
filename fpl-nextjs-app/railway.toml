@@ -1,0 +1,34 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+
+[environments]
+  [environments.production]
+    APP_ENV = "production"
+    NODE_ENV = "production"
+    CRON_SECRET = "${{ secrets.CRON_SECRET }}"
+  
+  [environments.preview]
+    APP_ENV = "preview"
+    NODE_ENV = "production"
+    CRON_SECRET = "${{ secrets.CRON_SECRET }}"
+
+# Daily data sync at 4:00 AM UTC
+[[cron]]
+schedule = "0 4 * * *"
+command = "curl -X POST -H 'Authorization: Bearer $CRON_SECRET' $RAILWAY_PUBLIC_DOMAIN/api/cron/sync-fpl"
+
+# Active gameweek update every 15 minutes
+[[cron]]
+schedule = "*/15 * * * *"
+command = "curl -X POST -H 'Authorization: Bearer $CRON_SECRET' $RAILWAY_PUBLIC_DOMAIN/api/cron/sync-fpl/active-gameweek"
+
+# Schedule manager update - runs daily at 1:00 AM UTC
+[[cron]]
+schedule = "0 1 * * *"
+command = "curl -X POST -H 'Authorization: Bearer $CRON_SECRET' $RAILWAY_PUBLIC_DOMAIN/api/cron/schedule/update"

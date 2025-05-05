@@ -1,0 +1,31 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# How we organize components and files
+
+## UI Components from Shadcn/ui
+
+- Will be stored in app/components/ui
+
+## Custom components we create
+
+- Will be stored in app/components/<name of component>
+
+Ex. We want to create a custom profile-form.tsx component for the profile page.tsx
+
+- This is stored in app/components/profile/
+
+## actions
+
+- All actions will be stored in app/actions/
+
+## Naming conventions
+
+- We will use kebab-case for all naming conventions. 
+
+## Icons
+
+- We will use Lucide icons for all UI components unless they do not have a satisfactory icon. 
+
