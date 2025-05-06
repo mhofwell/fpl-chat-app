@@ -8,7 +8,7 @@ export const getRedisClient = () => {
   console.log(`Initializing Redis connection to ${redisUrl}`);
 
   const client = new Redis(redisUrl, {
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: null,
     connectTimeout: 10000,
     enableReadyCheck: true,
     retryStrategy(times) {
