@@ -2,7 +2,7 @@
     "name": "fpl-queue-service",
     "version": "1.0.0",
     "description": "Queue service for FPL chat app using BullMQ",
-    "main": "dist/index.js",
+    "main": "dist/server.js",
     "scripts": {
         "build": "tsc && cp -r src/views dist/ && cp -r src/public dist/",
         "start": "node dist/server.js",
