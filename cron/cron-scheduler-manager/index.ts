@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+import { addJobToQueue } from './queue-client.js'; // Local copy of queue-client.ts
 dotenv.config();
 
 const NEXT_CLIENT_PORT = process.env.NEXT_CLIENT_PORT || 3000;
@@ -8,7 +9,7 @@ const APP_URL = `http://${BASE_URL}:${NEXT_CLIENT_PORT}` || 'http://fpl-mcp-chat
 const API_ENDPOINT = `${APP_URL}/api/cron/schedule/update`;
 const CRON_SECRET = process.env.CRON_SECRET;
 
-console.log(`Starting FPL scheduler manager job at ${new Date().toISOString()}`);
+console.log(`Starting FPL scheduler manager at ${new Date().toISOString()}`);
 
 interface Fixture {
   id: number;
@@ -159,4 +160,18 @@ async function updateSchedule(windows: ScheduleWindow[]): Promise<boolean> {
     console.error('Error in scheduler manager:', error);
     process.exit(1);
   }
+})();
+
+// Add the scheduler update job to the queue
+(async () => {
+  try {
+    console.log('Adding scheduler update job to queue');
+    
+    const result = await addJobToQueue('schedule-update', {});
+    console.log('Scheduler update job added to queue:', result);
+  } catch (error) {
+    console.error('Error scheduling update job:', error);
+    process.exit(1); // Exit with error code
+  }
+  console.log('Scheduler update job completed');
 })(); 

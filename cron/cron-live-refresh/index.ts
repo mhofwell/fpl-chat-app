@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
-import fetch from 'node-fetch';
 import { shouldRunCronJob } from './utils/schedule-helper.js';
+import { addJobToQueue } from './queue-client.js'; // Local copy of queue-client.ts
 dotenv.config();
 
 const NEXT_CLIENT_PORT = process.env.NEXT_CLIENT_PORT || 3000;
@@ -25,26 +25,13 @@ console.log(API_ENDPOINT);
             process.exit(0); // Exit successfully without error
         }
 
-        console.log(`Calling live refresh endpoint at ${API_ENDPOINT}`);
-
-        const response = await fetch(API_ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${CRON_SECRET}`,
-            },
-        });
-        // comment
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('Live refresh job completed:', data);
+        console.log('Adding live refresh job to queue');
+        
+        const result = await addJobToQueue('live-refresh', { family: 0 });
+        console.log('Live refresh job added to queue:', result);
     } catch (error) {
-        console.error('Error running live refresh job:', error);
+        console.error('Error scheduling live refresh job:', error);
         process.exit(1); // Exit with error code
     }
-    console.log('Live refresh job execution complete');
+    console.log('Live refresh job scheduling complete');
 })();

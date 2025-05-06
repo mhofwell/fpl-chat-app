@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Queue Dashboard</title>
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>
+        <div class="container">
+            <h1>BullMQ Dashboard</h1>
+
+            <div class="queue-list">
+                <% queues.forEach(queue => { %>
+                <div class="queue-card">
+                    <div class="queue-name"><%= queue.name %></div>
+                    <div class="job-counts">
+                        <span class="count-item waiting"
+                            >Waiting: <%= queue.counts.waiting || 0 %></span
+                        >
+                        <span class="count-item completed"
+                            >Completed: <%= queue.counts.completed || 0 %></span
+                        >
+                        <span class="count-item failed"
+                            >Failed: <%= queue.counts.failed || 0 %></span
+                        >
+                    </div>
+                    <a href="/dashboard/queue/<%= queue.name %>" class="btn"
+                        >View Details</a
+                    >
+                </div>
+                <% }); %>
+            </div>
+        </div>
+
+        <script>
+            // Auto refresh every 30 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 30000);
+        </script>
+    </body>
+</html>

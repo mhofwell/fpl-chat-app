@@ -1,0 +1,275 @@
+/* Base Styles */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  margin: 0;
+  padding: 20px;
+  background-color: #f8f9fa;
+  color: #333;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: white;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+h1, h2 {
+  color: #0a58ca;
+  margin-bottom: 20px;
+}
+
+/* Dashboard Overview Page */
+.queue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.queue-card {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  transition: transform 0.2s;
+}
+
+.queue-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.queue-name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #0a58ca;
+}
+
+.job-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.count-item {
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.active { background-color: #cfe2ff; color: #0a58ca; }
+.waiting { background-color: #fff3cd; color: #856404; }
+.completed { background-color: #d1e7dd; color: #105c38; }
+.failed { background-color: #f8d7da; color: #842029; }
+.delayed { background-color: #e2e3e5; color: #383d41; }
+
+.btn {
+  display: inline-block;
+  padding: 8px 15px;
+  margin-top: 15px;
+  background-color: #0a58ca;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.btn:hover {
+  background-color: #084298;
+}
+
+/* Queue Details Page */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.back-btn {
+  display: inline-block;
+  padding: 8px 15px;
+  background-color: #6c757d;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.back-btn:hover {
+  background-color: #5a6268;
+}
+
+.stats-container {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  flex: 1;
+  padding: 15px;
+  border-radius: 5px;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.active-stat { background-color: #cfe2ff; color: #0a58ca; }
+.waiting-stat { background-color: #fff3cd; color: #856404; }
+.completed-stat { background-color: #d1e7dd; color: #105c38; }
+.failed-stat { background-color: #f8d7da; color: #842029; }
+.delayed-stat { background-color: #e2e3e5; color: #383d41; }
+
+.job-section {
+  margin-bottom: 30px;
+}
+
+.tab-container {
+  margin-bottom: 20px;
+}
+
+.tab-buttons {
+  display: flex;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.tab-btn {
+  padding: 10px 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.tab-btn.active {
+  opacity: 1;
+  border-bottom: 2px solid #0a58ca;
+}
+
+.tab-content {
+  display: none;
+  padding: 20px 0;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table th, table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #dee2e6;
+}
+
+table th {
+  background-color: #f8f9fa;
+}
+
+.actions {
+  display: flex;
+  gap: 5px;
+}
+
+.action-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.retry-btn {
+  background-color: #0a58ca;
+  color: white;
+}
+
+.remove-btn {
+  background-color: #dc3545;
+  color: white;
+}
+
+/* Add Job Section */
+.add-job-section {
+  margin-top: 30px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-family: monospace;
+  min-height: 100px;
+}
+
+.submit-btn {
+  padding: 10px 20px;
+  background-color: #0a58ca;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.submit-btn:hover {
+  background-color: #084298;
+}
+
+.empty-state {
+  padding: 30px;
+  text-align: center;
+  color: #6c757d;
+}
+
+/* Error Page */
+.error-container {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 30px;
+  background-color: white;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.error-title {
+  color: #dc3545;
+  margin-bottom: 20px;
+}
+
+.error-message {
+  font-size: 18px;
+  margin-bottom: 30px;
+}

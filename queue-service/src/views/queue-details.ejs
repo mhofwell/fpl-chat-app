@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Queue: <%= queueName %></title>
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Queue: <%= queueName %></h1>
+                <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+            </div>
+
+            <div class="tab-container">
+                <div class="tab-buttons">
+                    <button class="tab-btn active" data-tab="waiting">
+                        Upcoming Jobs (<%= jobs.waiting.length %>)
+                    </button>
+                    <button class="tab-btn" data-tab="completed">
+                        Completed Jobs (<%= jobs.completed.length %>)
+                    </button>
+                    <button class="tab-btn" data-tab="failed">
+                        Failed Jobs (<%= jobs.failed.length %>)
+                    </button>
+                </div>
+
+                <div id="waiting" class="tab-content active">
+                    <% if (jobs.waiting.length > 0) { %>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Scheduled Time</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.waiting.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td>
+                                    <%= new Date(job.timestamp).toLocaleString()
+                                    %>
+                                </td>
+                                <td>
+                                    <pre>
+<%= JSON.stringify(job.data, null, 2) %></pre
+                                    >
+                                </td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No upcoming jobs</div>
+                    <% } %>
+                </div>
+
+                <div id="completed" class="tab-content">
+                    <% if (jobs.completed.length > 0) { %>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Completed At</th>
+                                <th>Duration</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.completed.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td>
+                                    <span class="status-badge completed"
+                                        >Completed</span
+                                    >
+                                </td>
+                                <td>
+                                    <%= new
+                                    Date(job.finishedOn).toLocaleString() %>
+                                </td>
+                                <td>
+                                    <%= Math.round((job.finishedOn -
+                                    job.processedOn) / 1000) %> sec
+                                </td>
+                                <td>
+                                    <pre>
+<%= JSON.stringify(job.returnvalue, null, 2) %></pre
+                                    >
+                                </td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No completed jobs</div>
+                    <% } %>
+                </div>
+
+                <div id="failed" class="tab-content">
+                    <% if (jobs.failed.length > 0) { %>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Failed At</th>
+                                <th>Error Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.failed.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td>
+                                    <span class="status-badge failed"
+                                        >Failed</span
+                                    >
+                                </td>
+                                <td>
+                                    <%= new
+                                    Date(job.finishedOn).toLocaleString() %>
+                                </td>
+                                <td><pre><%= job.failedReason %></pre></td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No failed jobs</div>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Tab functionality
+            document.querySelectorAll('.tab-btn').forEach((button) => {
+                button.addEventListener('click', () => {
+                    // Hide all tab contents
+                    document
+                        .querySelectorAll('.tab-content')
+                        .forEach((content) => {
+                            content.classList.remove('active');
+                        });
+
+                    // Remove active class from all buttons
+                    document.querySelectorAll('.tab-btn').forEach((btn) => {
+                        btn.classList.remove('active');
+                    });
+
+                    // Show the selected tab content
+                    const tabId = button.getAttribute('data-tab');
+                    document.getElementById(tabId).classList.add('active');
+                    button.classList.add('active');
+                });
+            });
+
+            // Auto refresh every 30 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 30000);
+        </script>
+    </body>
+</html>

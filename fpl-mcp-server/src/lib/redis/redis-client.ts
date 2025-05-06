@@ -2,7 +2,7 @@ import Redis from 'ioredis';
 import { config } from '../../config';
 
 // Get environment variables
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379?family=0';
+const redisUrl = `${process.env.REDIS_URL}?family=0` || 'redis://localhost:6379?family=0';
 
 // Log environment info for debugging
 console.log('Environment variables:');

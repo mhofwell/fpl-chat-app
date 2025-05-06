@@ -29,6 +29,7 @@
         "@supabase/ssr": "latest",
         "@supabase/supabase-js": "latest",
         "autoprefixer": "10.4.20",
+        "bullmq": "^5.52.1",
         "class-variance-authority": "^0.7.0",
         "clsx": "^2.1.1",
         "dotenv": "^16.5.0",
