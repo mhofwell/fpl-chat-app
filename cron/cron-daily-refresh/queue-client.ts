@@ -4,9 +4,9 @@ dotenv.config();
 
 const NEXT_CLIENT_PORT = process.env.NEXT_CLIENT_PORT || 3000;
 const BASE_URL =
-    process.env.NEXT_CLIENT_PRIVATE_URL || 'fpl-mcp-chat.railway.internal';
+    process.env.NEXT_CLIENT_PRIVATE_URL || 'localhost';
 const APP_URL = `http://${BASE_URL}:${NEXT_CLIENT_PORT}`;
-const QUEUE_API_ENDPOINT = `${APP_URL}/api/queue`;
+const QUEUE_API_ENDPOINT = `${APP_URL}/api/queue?family=0`;
 const CRON_SECRET = process.env.CRON_SECRET;
 
 /**
