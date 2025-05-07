@@ -140,7 +140,7 @@ app.get('/debug/queues', verifyQueueSecret, async (req, res) => {
         console.error('Error fetching queue debug info:', error);
         res.status(500).json({ error: 'Failed to fetch queue information' });
     }
-});s
+});
 
 // API to add a job to a queue
 app.post('/queue/:queueName', verifyQueueSecret, async (req, res) => {
