@@ -56,9 +56,31 @@
                                     %>
                                 </td>
                                 <td>
-                                    <pre>
-<%= JSON.stringify(job.data, null, 2) %></pre
-                                    >
+                                    <div class="job-card">
+                                        <h3>Job #<%= job.id %></h3>
+                                        <div class="job-meta">
+                                            <span class="badge badge-<%= getJobTypeBadgeClass(job.data.refreshType) %>">
+                                                <%= job.data.refreshType || 'unknown' %>
+                                            </span>
+                                            <span class="badge badge-info">
+                                                GW: <%= job.data.gameweek || 'N/A' %>
+                                            </span>
+                                            <span class="badge badge-secondary">
+                                                By: <%= job.data.triggeredBy || 'unknown' %>
+                                            </span>
+                                            <% if(job.data.isMatchDay) { %>
+                                                <span class="badge badge-danger">Match Day</span>
+                                            <% } %>
+                                        </div>
+                                        <div class="job-timestamp">
+                                            Added: <%= new Date(job.timestamp).toLocaleString() %>
+                                        </div>
+                                        <% if(job.failedReason) { %>
+                                            <div class="job-error">
+                                                Error: <%= job.failedReason %>
+                                            </div>
+                                        <% } %>
+                                    </div>
                                 </td>
                             </tr>
                             <% }); %>

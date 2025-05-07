@@ -2,18 +2,23 @@ import dotenv from 'dotenv';
 import { addJobToQueue } from './queue-client.js';
 dotenv.config();
 
-console.log(`Starting FPL daily refresh scheduler at ${new Date().toISOString()}`);
+console.log(`[CRON-START] Starting FPL daily refresh scheduler at ${new Date().toISOString()}`);
 
-// Add the daily refresh job to the queue instead of directly calling the API
+// Add the daily refresh job to the queue
 (async () => {
   try {
-    console.log('Adding daily refresh job to queue');
+    console.log('[CRON-JOB] Adding daily refresh job to queue');
     
-    const result = await addJobToQueue('daily-refresh', { family: 0 });
-    console.log('Daily refresh job added to queue:', result);
+    // Enhanced job data without family:0
+    const result = await addJobToQueue('daily-refresh', {
+      triggeredBy: 'daily-cron-schedule',
+      refreshType: 'full'
+    });
+    
+    console.log('[CRON-JOB] Daily refresh job added to queue:', result);
   } catch (error) {
-    console.error('Error scheduling daily refresh job:', error);
+    console.error('[CRON-ERROR] Error scheduling daily refresh job:', error);
     process.exit(1); // Exit with error code
   }
-  console.log('Daily refresh job scheduling complete');
+  console.log('[CRON-COMPLETE] Daily refresh job scheduling complete');
 })();

@@ -19,7 +19,7 @@ const REFRESH_TYPES = {
   [QUEUE_NAMES.SCHEDULER_MANAGER]: 'schedule',
 };
 
-// Get current gameweek from database
+// Get current gameweek from database with error handling
 async function getCurrentGameweek() {
   try {
     const { data, error } = await supabase
@@ -33,6 +33,27 @@ async function getCurrentGameweek() {
     return data?.value ? parseInt(data.value, 10) : null;
   } catch (error) {
     console.error('Error fetching current gameweek:', error);
+    return null;
+  }
+}
+
+// Get last refresh time for a specific job type
+async function getLastRefreshTime(jobType: string) {
+  try {
+    const { data, error } = await supabase
+      .from('refresh_logs')
+      .select('created_at')
+      .eq('type', jobType)
+      .eq('state', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error) throw error;
+    
+    return data ? data.created_at : null;
+  } catch (error) {
+    console.error(`Error fetching last refresh time for ${jobType}:`, error);
     return null;
   }
 }
@@ -58,24 +79,47 @@ async function isMatchDay() {
   }
 }
 
-// Main function to get job context
+// Main function to get job context with better error handling
 export async function getJobContext(queueName: string, source: string = 'schedule') {
-  const matchDay = await isMatchDay();
-  const currentGameweek = await getCurrentGameweek();
-  
-  let priority = JOB_PRIORITIES[queueName] || 10;
-  
-  // Boost priority during match days for live and post-match updates
-  if (matchDay && (queueName === QUEUE_NAMES.LIVE_REFRESH || queueName === QUEUE_NAMES.POST_MATCH_REFRESH)) {
-    priority = Math.max(1, priority - 1);
+  try {
+    // Run all database queries in parallel for performance
+    const [matchDay, currentGameweek, lastRefreshTime] = await Promise.all([
+      isMatchDay().catch(() => false),
+      getCurrentGameweek().catch(() => null),
+      getLastRefreshTime(queueName).catch(() => null)
+    ]);
+    
+    let priority = JOB_PRIORITIES[queueName] || 10;
+    
+    // Boost priority during match days
+    if (matchDay && (queueName === QUEUE_NAMES.LIVE_REFRESH || queueName === QUEUE_NAMES.POST_MATCH_REFRESH)) {
+      priority = Math.max(1, priority - 1);
+    }
+    
+    return {
+      refreshType: REFRESH_TYPES[queueName] || 'incremental',
+      gameweek: currentGameweek,
+      lastRefreshTime,
+      triggeredBy: source,
+      priority,
+      timestamp: Date.now(),
+      isMatchDay: matchDay,
+      queueName  // Include the queue name for reference
+    };
+  } catch (error) {
+    console.error('Error getting job context, using fallback values:', error);
+    
+    // Provide fallback values when there are errors
+    return {
+      refreshType: REFRESH_TYPES[queueName] || 'incremental',
+      gameweek: null,
+      lastRefreshTime: null,
+      triggeredBy: source,
+      priority: JOB_PRIORITIES[queueName] || 10,
+      timestamp: Date.now(),
+      isMatchDay: false,
+      queueName,
+      error: 'Failed to fetch complete context'
+    };
   }
-  
-  return {
-    refreshType: REFRESH_TYPES[queueName] || 'incremental',
-    gameweek: currentGameweek,
-    triggeredBy: source,
-    priority,
-    timestamp: Date.now(),
-    isMatchDay: matchDay
-  };
 }

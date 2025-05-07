@@ -165,13 +165,18 @@ async function updateSchedule(windows: ScheduleWindow[]): Promise<boolean> {
 // Add the scheduler update job to the queue
 (async () => {
   try {
-    console.log('Adding scheduler update job to queue');
+    console.log('[CRON-JOB] Adding schedule update job to queue');
     
-    const result = await addJobToQueue('schedule-update', {});
-    console.log('Scheduler update job added to queue:', result);
+    // Enhanced job data without family:0
+    const result = await addJobToQueue('schedule-update', {
+      triggeredBy: 'scheduler-cron-schedule',
+      refreshType: 'schedule'
+    });
+    
+    console.log('[CRON-JOB] Schedule update job added to queue:', result);
   } catch (error) {
-    console.error('Error scheduling update job:', error);
+    console.error('[CRON-ERROR] Error scheduling update job:', error);
     process.exit(1); // Exit with error code
   }
-  console.log('Scheduler update job completed');
+  console.log('[CRON-COMPLETE] Schedule update job complete');
 })(); 

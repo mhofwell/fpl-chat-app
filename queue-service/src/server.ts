@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { config } from './config';
 import dashboardRouter from './dashboard';
 import redis from './lib/redis/redis-client';
+import { getJobContext } from './lib/context-provider';
 
 // Initialize dotenv at the top
 dotenv.config();
@@ -30,11 +31,25 @@ initializeWorkers();
 // Add to server.ts after initializing queues
 const testQueue = getQueue(QUEUE_NAMES.DAILY_REFRESH);
 if (testQueue) {
-    console.log('Adding test job to verify queue functionality');
-    testQueue
-        .add('test-job', { test: true })
-        .then((job) => console.log(`Test job added with ID: ${job.id}`))
-        .catch((err) => console.error('Failed to add test job:', err));
+    console.log('[STARTUP] Adding enhanced test job to verify queue functionality');
+    
+    // Get dynamic context for test job
+    getJobContext(QUEUE_NAMES.DAILY_REFRESH, 'system-startup')
+        .then(context => {
+            console.log('[STARTUP] Generated context for test job:', context);
+            
+            // Extract priority for job options
+            const { priority, ...jobData } = context;
+            
+            return testQueue.add('test-job', jobData, { 
+                priority,
+                // Add job options for cleanup
+                removeOnComplete: 100,
+                removeOnFail: 100
+            });
+        })
+        .then((job) => console.log(`[STARTUP] Test job added with ID: ${job.id} and data:`, job.data))
+        .catch((err) => console.error('[STARTUP-ERROR] Failed to add test job:', err));
 }
 
 // Middleware to verify API secret
@@ -60,7 +75,7 @@ app.get('/redis/keys/:pattern', async (req, res) => {
     try {
         const { pattern } = req.params;
         const keys = await redis.keys(pattern);
-        
+
         // For each key, get the type and TTL
         const keysWithDetails = await Promise.all(
             keys.map(async (key) => {
@@ -69,10 +84,10 @@ app.get('/redis/keys/:pattern', async (req, res) => {
                 return { key, type, ttl };
             })
         );
-        
+
         res.json({
             count: keys.length,
-            keys: keysWithDetails
+            keys: keysWithDetails,
         });
     } catch (error) {
         console.error('Error searching Redis keys:', error);
@@ -96,28 +111,31 @@ app.get('/debug/queues', async (req, res) => {
                         queue.getJobs(['failed'], 0, 100),
                     ]);
 
+                // Enhanced job mapping function with consistent format
+                const mapJobData = (j: any) => ({
+                    id: j.id,
+                    data: j.data,
+                    timestamp: j.timestamp,
+                    added: new Date(j.timestamp).toISOString(),
+                    // Add enhanced fields for better debugging
+                    refreshType: j.data?.refreshType || 'unknown',
+                    triggeredBy: j.data?.triggeredBy || 'unknown',
+                    jobContext: {
+                        gameweek: j.data?.gameweek,
+                        isMatchDay: j.data?.isMatchDay,
+                        lastRefreshTime: j.data?.lastRefreshTime
+                    }
+                });
+
                 queueStats[queueName] = {
                     counts,
                     jobs: {
-                        waiting: waiting.map((j) => ({
-                            id: j.id,
-                            data: j.data,
-                            timestamp: j.timestamp,
-                        })),
-                        active: active.map((j) => ({
-                            id: j.id,
-                            data: j.data,
-                            timestamp: j.timestamp,
-                        })),
-                        completed: completed.map((j) => ({
-                            id: j.id,
-                            data: j.data,
-                            timestamp: j.timestamp,
-                        })),
+                        waiting: waiting.map(mapJobData),
+                        active: active.map(mapJobData),
+                        completed: completed.map(mapJobData),
                         failed: failed.map((j) => ({
-                            id: j.id,
-                            data: j.data,
-                            failedReason: j.failedReason,
+                            ...mapJobData(j),
+                            failedReason: j.failedReason
                         })),
                     },
                 };
@@ -126,7 +144,7 @@ app.get('/debug/queues', async (req, res) => {
 
         res.json({ queues: queueStats });
     } catch (error) {
-        console.error('Error fetching queue debug info:', error);
+        console.error('[DEBUG-ERROR] Error fetching queue debug info:', error);
         res.status(500).json({ error: 'Failed to fetch queue information' });
     }
 });
@@ -134,7 +152,7 @@ app.get('/debug/queues', async (req, res) => {
 // API to add a job to a queue
 app.post('/queue/:queueName', verifyQueueSecret, async (req, res) => {
     const { queueName } = req.params;
-    const { data, options } = req.body;
+    let { data = {}, options = {} } = req.body;
 
     // Validate queue name
     if (!Object.values(QUEUE_NAMES).includes(queueName)) {
@@ -142,18 +160,39 @@ app.post('/queue/:queueName', verifyQueueSecret, async (req, res) => {
     }
 
     try {
+        // Get dynamic context based on queue name
+        const context = await getJobContext(
+            queueName,
+            data.triggeredBy || 'api-request'
+        );
+
+        // Merge provided data with context, allowing overrides
+        data = {
+            ...context,
+            ...data,
+            timestamp: Date.now(), // Always use the current timestamp
+        };
+
+        // Set priority in options if not already provided
+        if (!options.priority && data.priority) {
+            options.priority = data.priority;
+            // Remove from data to avoid duplication
+            delete data.priority;
+        }
+
         const queue = getQueue(queueName);
         if (!queue) {
             return res.status(500).json({ error: 'Queue not initialized' });
         }
 
-        // Add job to queue
+        // Add job to queue with enhanced data and options
         const job = await queue.add(queueName, data, options);
 
         res.json({
             success: true,
             jobId: job.id,
             queue: queueName,
+            data, // Return the enhanced data for debugging
         });
     } catch (error) {
         console.error(`Error adding job to queue ${queueName}:`, error);
@@ -186,23 +225,40 @@ app.get('/queue/:queueName/status', verifyQueueSecret, async (req, res) => {
                 queue.getJobs(['failed'], 0, 10),
             ]);
 
+        // Enhanced job mapping function
+        const mapJobData = (j: any) => ({
+            id: j.id,
+            data: {
+                refreshType: j.data?.refreshType || 'unknown',
+                gameweek: j.data?.gameweek,
+                triggeredBy: j.data?.triggeredBy || 'unknown',
+                isMatchDay: j.data?.isMatchDay,
+                timestamp: j.data?.timestamp || j.timestamp
+            },
+            addedAt: new Date(j.timestamp).toISOString()
+        });
+
         res.json({
             queueName,
             jobCounts,
             jobs: {
-                active: activeJobs,
-                waiting: waitingJobs,
-                completed: completedJobs,
-                failed: failedJobs,
+                active: activeJobs.map(mapJobData),
+                waiting: waitingJobs.map(mapJobData),
+                completed: completedJobs.map(mapJobData),
+                failed: failedJobs.map(j => ({
+                    ...mapJobData(j),
+                    failedReason: j.failedReason
+                }))
             },
+            timestamp: new Date().toISOString()
         });
     } catch (error) {
-        console.error(`Error getting queue status for ${queueName}:`, error);
+        console.error(`[API-ERROR] Error getting queue status for ${queueName}:`, error);
         res.status(500).json({ error: 'Failed to get queue status' });
     }
 });
 
-// Add this near the other API routes
+// health check
 app.get('/health', async (req, res) => {
     try {
         // Test Redis connection
@@ -219,6 +275,58 @@ app.get('/health', async (req, res) => {
             redis: 'disconnected',
             error: error instanceof Error ? error.message : 'Unknown error',
             timestamp: new Date().toISOString(),
+        });
+    }
+});
+
+// Add this near the other API routes
+app.get('/context/:queueName', verifyQueueSecret, async (req, res) => {
+    const { queueName } = req.params;
+    const source = req.query.source || 'api-request';
+
+    // Validate queue name
+    if (!Object.values(QUEUE_NAMES).includes(queueName)) {
+        return res.status(400).json({ error: 'Invalid queue name' });
+    }
+
+    try {
+        const context = await getJobContext(queueName, source as string);
+        res.json(context);
+    } catch (error) {
+        console.error(`Error getting context for ${queueName}:`, error);
+        res.status(500).json({ error: 'Failed to get job context' });
+    }
+});
+
+app.get('/health/context', async (req, res) => {
+    try {
+        // Test context provider by getting a sample context
+        const context = await getJobContext(QUEUE_NAMES.DAILY_REFRESH, 'health-check');
+        
+        // Check if we got essential fields
+        const isValid = context && 
+                        context.refreshType && 
+                        typeof context.isMatchDay === 'boolean';
+        
+        if (isValid) {
+            res.json({
+                status: 'ok',
+                context: {
+                    refreshType: context.refreshType,
+                    gameweek: context.gameweek,
+                    isMatchDay: context.isMatchDay
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            throw new Error('Invalid context received');
+        }
+    } catch (error) {
+        console.error('[HEALTH] Context provider check failed:', error);
+        res.status(500).json({
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
         });
     }
 });
