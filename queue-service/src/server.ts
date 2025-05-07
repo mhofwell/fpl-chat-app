@@ -91,6 +91,57 @@ app.use('/dashboard', dashboardRouter);
 
 // API routes
 
+app.get('/debug/queues', verifyQueueSecret, async (req, res) => {
+    try {
+        const queueStats: Record<string, any> = {};
+
+        for (const queueName of Object.values(QUEUE_NAMES)) {
+            const queue = getQueue(queueName);
+            if (queue) {
+                const [counts, waiting, active, completed, failed] =
+                    await Promise.all([
+                        queue.getJobCounts(),
+                        queue.getJobs(['waiting'], 0, 100),
+                        queue.getJobs(['active'], 0, 100),
+                        queue.getJobs(['completed'], 0, 100),
+                        queue.getJobs(['failed'], 0, 100),
+                    ]);
+
+                queueStats[queueName] = {
+                    counts,
+                    jobs: {
+                        waiting: waiting.map((j) => ({
+                            id: j.id,
+                            data: j.data,
+                            timestamp: j.timestamp,
+                        })),
+                        active: active.map((j) => ({
+                            id: j.id,
+                            data: j.data,
+                            timestamp: j.timestamp,
+                        })),
+                        completed: completed.map((j) => ({
+                            id: j.id,
+                            data: j.data,
+                            timestamp: j.timestamp,
+                        })),
+                        failed: failed.map((j) => ({
+                            id: j.id,
+                            data: j.data,
+                            failedReason: j.failedReason,
+                        })),
+                    },
+                };
+            }
+        }
+
+        res.json({ queues: queueStats });
+    } catch (error) {
+        console.error('Error fetching queue debug info:', error);
+        res.status(500).json({ error: 'Failed to fetch queue information' });
+    }
+});s
+
 // API to add a job to a queue
 app.post('/queue/:queueName', verifyQueueSecret, async (req, res) => {
     const { queueName } = req.params;
