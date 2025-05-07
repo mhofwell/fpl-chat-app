@@ -22,7 +22,7 @@ export async function addJobToQueue(
             `Adding ${jobType} job to queue at ${new Date().toISOString()}`
         );
 
-        const response = await fetch(`${QUEUE_API_ENDPOINT}/jobs`, {
+        const response = await fetch(`${QUEUE_API_ENDPOINT}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

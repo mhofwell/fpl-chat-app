@@ -7,6 +7,7 @@ import { QUEUE_NAMES } from './config/queue-config';
 import dotenv from 'dotenv';
 import { config } from './config';
 import dashboardRouter from './dashboard';
+import redis from './lib/redis/redis-client';
 
 // Initialize dotenv at the top
 dotenv.config();
@@ -117,6 +118,27 @@ app.get('/queue/:queueName/status', verifyQueueSecret, async (req, res) => {
     } catch (error) {
         console.error(`Error getting queue status for ${queueName}:`, error);
         res.status(500).json({ error: 'Failed to get queue status' });
+    }
+});
+
+// Add this near the other API routes
+app.get('/health', async (req, res) => {
+    try {
+        // Test Redis connection
+        await redis.ping();
+        res.json({ 
+            status: 'ok', 
+            redis: 'connected',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Health check failed:', error);
+        res.status(500).json({ 
+            status: 'error', 
+            redis: 'disconnected',
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+        });
     }
 });
 

@@ -3,9 +3,6 @@ import { Queue } from 'bullmq';
 import redis from '@/lib/redis/redis-client';
 import { checkCronSecret } from '@/lib/cron/cron-auth';
 
-// Create Redis connection
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-
 // Define the queues - one for each job type
 const queues = {
     'daily-refresh': new Queue('daily-refresh', { connection: redis }),

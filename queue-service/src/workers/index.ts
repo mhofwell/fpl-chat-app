@@ -46,6 +46,14 @@ export function initializeWorkers() {
                 error
             );
         });
+
+        workers[queueName].on('active', (job) => {
+            console.log(`Job ${job.id} started in queue ${queueName}`);
+        });
+
+        workers[queueName].on('stalled', (jobId) => {
+            console.warn(`Job ${jobId} stalled in queue ${queueName}`);
+        });
     });
 
     console.log('All workers initialized');
