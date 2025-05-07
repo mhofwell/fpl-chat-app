@@ -3,10 +3,9 @@ import fetch from 'node-fetch';
 dotenv.config();
 
 const NEXT_CLIENT_PORT = process.env.NEXT_CLIENT_PORT || 3000;
-const BASE_URL =
-    process.env.NEXT_CLIENT_PRIVATE_URL || 'localhost';
+const BASE_URL = process.env.NEXT_CLIENT_PRIVATE_URL || 'localhost';
 const APP_URL = `http://${BASE_URL}:${NEXT_CLIENT_PORT}`;
-const QUEUE_API_ENDPOINT = `${APP_URL}/api/queue`;
+const QUEUE_API_ENDPOINT = `${APP_URL}/api/queue?family=0`;
 const CRON_SECRET = process.env.CRON_SECRET;
 
 /**
@@ -20,34 +19,38 @@ export async function addJobToQueue(
     try {
         console.log(`[CRON-JOB] Adding ${jobType} job to queue at ${new Date().toISOString()}`);
         
-        // Create complete job data
-        const jobData = {
+        // Create job data with the enhanced structure
+        const data = {
             ...additionalData,
             triggeredBy: additionalData.triggeredBy || 'cron-schedule',
             timestamp: Date.now()
         };
         
-        // Add the job with the enhanced data
-        const jobResponse = await fetch(`${QUEUE_API_ENDPOINT}`, {
+        // Keep the original request structure that the Next.js endpoint expects
+        const response = await fetch(`${QUEUE_API_ENDPOINT}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${CRON_SECRET}`,
             },
             body: JSON.stringify({
-                queueName: jobType,
-                data: jobData,
-                options: additionalOptions
+                jobType,
+                data,
+                options: additionalOptions,
             }),
         });
 
-        if (!jobResponse.ok) {
-            throw new Error(`[CRON-ERROR] HTTP error adding job! Status: ${jobResponse.status}`);
+        if (!response.ok) {
+            throw new Error(`[CRON-ERROR] HTTP error adding job! Status: ${response.status}`);
         }
 
-        const result = await jobResponse.json() as { jobId: string; data: Record<string, any> };
-        console.log(`[CRON-JOB] Job added to queue: ${result.jobId}`, result.data);
-        return result;
+        const result = await response.json() as { id: string; name: string; status: string };
+        console.log(`[CRON-JOB] Job added to queue: ${result.id}`, { jobType, data });
+        return {
+            id: result.id,
+            jobId: result.id,
+            data
+        };
     } catch (error) {
         console.error(`[CRON-ERROR] Error adding ${jobType} job to queue:`, error);
         throw error;
