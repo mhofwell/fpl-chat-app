@@ -30,11 +30,46 @@ initializeWorkers();
 // Add to server.ts after initializing queues
 const testQueue = getQueue(QUEUE_NAMES.DAILY_REFRESH);
 if (testQueue) {
-  console.log('Adding test job to verify queue functionality');
-  testQueue.add('test-job', { test: true })
-    .then(job => console.log(`Test job added with ID: ${job.id}`))
-    .catch(err => console.error('Failed to add test job:', err));
+    console.log('Adding test job to verify queue functionality');
+    testQueue
+        .add('test-job', { test: true })
+        .then((job) => console.log(`Test job added with ID: ${job.id}`))
+        .catch((err) => console.error('Failed to add test job:', err));
 }
+
+// Add to queue-service/src/server.ts after queues and workers initialization
+setTimeout(async () => {
+    try {
+        console.log('=== TESTING BOTH DAILY AND HOURLY REFRESH WORKERS ===');
+
+        // Test daily refresh job (which we know works)
+        const dailyQueue = getQueue(QUEUE_NAMES.DAILY_REFRESH);
+        if (dailyQueue) {
+            console.log('Adding daily test job...');
+            const dailyJob = await dailyQueue.add('test-daily', {
+                test: true,
+                family: 0,
+            });
+            console.log(`Daily test job added with ID: ${dailyJob.id}`);
+        }
+
+        // Wait 5 seconds to ensure daily job completes
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        // Test hourly refresh job
+        const hourlyQueue = getQueue(QUEUE_NAMES.HOURLY_REFRESH);
+        if (hourlyQueue) {
+            console.log('Adding hourly test job...');
+            const hourlyJob = await hourlyQueue.add('test-hourly', {
+                test: true,
+                family: 0,
+            });
+            console.log(`Hourly test job added with ID: ${hourlyJob.id}`);
+        }
+    } catch (error) {
+        console.error('Error adding test jobs:', error);
+    }
+}, 10000);
 
 // Middleware to verify API secret
 const verifyQueueSecret = (
@@ -55,9 +90,6 @@ const verifyQueueSecret = (
 app.use('/dashboard', dashboardRouter);
 
 // API routes
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date() });
-});
 
 // API to add a job to a queue
 app.post('/queue/:queueName', verifyQueueSecret, async (req, res) => {
@@ -135,27 +167,37 @@ app.get('/health', async (req, res) => {
     try {
         // Test Redis connection
         await redis.ping();
-        res.json({ 
-            status: 'ok', 
+        res.json({
+            status: 'ok',
             redis: 'connected',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         });
     } catch (error) {
         console.error('Health check failed:', error);
-        res.status(500).json({ 
-            status: 'error', 
+        res.status(500).json({
+            status: 'error',
             redis: 'disconnected',
             error: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         });
     }
 });
+
+const configEnvironment = process.env.NODE_ENV || 'development';
 
 // Start the server
 const server = app.listen(config.api.port, () => {
     console.log(`Queue service running on port ${config.api.port}`);
     console.log(`Environment: ${config.environment}`);
-    console.log(`Dashboard available at: http://localhost:${config.api.port}/dashboard`);
+    if (configEnvironment === 'development') {
+        console.log(
+            `Dashboard available at: http://localhost:${config.api.port}/dashboard`
+        );
+    } else {
+        console.log(
+            `Dashboard available at: ${process.env.RAILWAY_PUBLIC_DOMAIN}/dashboard`
+        );
+    }
 });
 
 // Handle graceful shutdown

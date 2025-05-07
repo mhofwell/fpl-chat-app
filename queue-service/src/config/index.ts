@@ -9,18 +9,16 @@ export const config = {
   environment: process.env.NODE_ENV || 'development',
   
   api: {
-    port: parseInt(process.env.PORT || '3001', 10),
-    secret: process.env.QUEUE_SECRET || 'default-secret-change-me',
+    port: parseInt(process.env.PORT || '3002', 10),
+    secret: process.env.QUEUE_SECRET,
   },
   
   nextApp: {
     url: NEXT_APP_URL,
-    privateUrl: NEXT_CLIENT_PRIVATE_URL,
-    port: NEXT_CLIENT_PORT,
   },
   
   cron: {
-    secret: process.env.CRON_SECRET || 'default-cron-secret-change-me',
+    secret: process.env.CRON_SECRET,
   },
 };
 

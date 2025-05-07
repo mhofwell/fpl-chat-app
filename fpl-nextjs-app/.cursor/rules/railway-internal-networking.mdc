@@ -29,8 +29,4 @@ fpl-mcp-server=8080
 ## Private URLs of our Services: 
 
 fpl-mcp-server=fpl-mcp-server.railway.internal
-fpl-mcp-chat=fpl-mcp-chat.railway.internal
-
-NOTE: 
-
-fpl-mcp-chat is the name of the fpl-nextjs-app in Railway. 
+fpl-nextjs-app=fpl-mcp-chat.railway.internal

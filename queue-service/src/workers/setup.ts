@@ -1,11 +1,5 @@
 import { Worker } from 'bullmq';
-import Redis from 'ioredis';
-
-// Create Redis connection for workers
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const connection = new Redis(redisUrl, {
-    maxRetriesPerRequest: 3,
-});
+import redis from '../lib/redis/redis-client'; 
 
 // Import processors
 import { dailyRefreshProcessor } from './processors/daily-refresh';
@@ -17,21 +11,21 @@ import { scheduleUpdateProcessor } from './processors/schedule-update';
 // Create workers for each queue
 export const workers = {
     'daily-refresh': new Worker('daily-refresh', dailyRefreshProcessor, {
-        connection,
+        connection: redis, 
     }),
     'hourly-refresh': new Worker('hourly-refresh', hourlyRefreshProcessor, {
-        connection,
+        connection: redis, 
     }),
     'live-refresh': new Worker('live-refresh', liveRefreshProcessor, {
-        connection,
+        connection: redis, 
     }),
     'post-match-refresh': new Worker(
         'post-match-refresh',
         postMatchRefreshProcessor,
-        { connection }
+        { connection: redis } 
     ),
     'schedule-update': new Worker('schedule-update', scheduleUpdateProcessor, {
-        connection,
+        connection: redis, 
     }),
 };
 

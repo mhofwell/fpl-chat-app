@@ -1,38 +1,48 @@
 import { Job } from 'bullmq';
 import fetch from 'node-fetch';
-
-const NEXT_CLIENT_PORT = process.env.NEXT_CLIENT_PORT || 3000;
-const BASE_URL = process.env.NEXT_CLIENT_PRIVATE_URL || 'fpl-mcp-chat.railway.internal';
-const APP_URL = `http://${BASE_URL}:${NEXT_CLIENT_PORT}`;
-const CRON_SECRET = process.env.CRON_SECRET;
+import { config } from '../../config';
 
 export async function hourlyRefreshProcessor(job: Job) {
-  try {
-    console.log(`Processing hourly refresh job ${job.id}`);
-    const { family = 0 } = job.data;
-    
-    // Call the API endpoint that contains the execution logic
-    const apiEndpoint = `${APP_URL}/api/cron/sync-fpl/hourly?family=${family}`;
-    
-    console.log(`Calling hourly refresh endpoint at ${apiEndpoint}`);
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${CRON_SECRET}`,
-      },
-    });
+    try {
+        console.log(`Processing hourly refresh job ${job.id}`);
+        console.log('Job data:', JSON.stringify(job.data));
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+        // Call the API endpoint that contains the execution logic
+        const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/hourly?family=0`;
+
+        console.log(`Calling hourly refresh endpoint at ${apiEndpoint}`);
+        let responseText;
+
+        try {
+            const response = await fetch(apiEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${config.cron.secret}`,
+                },
+            });
+
+            console.log(
+                `Response status from hourly endpoint: ${response.status}`
+            );
+            responseText = await response.text();
+
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP error! Status: ${response.status}, Response: ${responseText}`
+                );
+            }
+
+            const result = JSON.parse(responseText);
+            console.log('Hourly refresh completed:', result);
+            return result;
+        } catch (fetchError) {
+            console.error('Fetch error in hourly refresh:', fetchError);
+            console.error('Response text if available:', responseText);
+            throw fetchError;
+        }
+    } catch (error) {
+        console.error('Error in hourly refresh processor:', error);
+        throw error;
     }
-
-    const result = await response.json();
-    console.log('Hourly refresh completed:', result);
-    
-    return result;
-  } catch (error) {
-    console.error('Error in hourly refresh processor:', error);
-    throw error;
-  }
 }
