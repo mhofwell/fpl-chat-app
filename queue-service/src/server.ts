@@ -270,7 +270,7 @@ const server = app.listen(config.api.port, () => {
         );
     } else {
         console.log(
-            `Dashboard available at: ${process.env.RAILWAY_PUBLIC_DOMAIN}/dashboard`
+            `Dashboard available at: https://${process.env.RAILWAY_PUBLIC_DOMAIN}/dashboard`
         );
     }
 });
