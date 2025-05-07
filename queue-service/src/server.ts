@@ -91,6 +91,30 @@ app.use('/dashboard', dashboardRouter);
 
 // API routes
 
+app.get('/redis/keys/:pattern', async (req, res) => {
+    try {
+        const { pattern } = req.params;
+        const keys = await redis.keys(pattern);
+        
+        // For each key, get the type and TTL
+        const keysWithDetails = await Promise.all(
+            keys.map(async (key) => {
+                const type = await redis.type(key);
+                const ttl = await redis.ttl(key);
+                return { key, type, ttl };
+            })
+        );
+        
+        res.json({
+            count: keys.length,
+            keys: keysWithDetails
+        });
+    } catch (error) {
+        console.error('Error searching Redis keys:', error);
+        res.status(500).json({ error: 'Failed to search Redis keys' });
+    }
+});
+
 app.get('/debug/queues', async (req, res) => {
     try {
         const queueStats: Record<string, any> = {};

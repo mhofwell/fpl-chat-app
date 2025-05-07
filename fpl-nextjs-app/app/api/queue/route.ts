@@ -5,13 +5,26 @@ import { checkCronSecret } from '@/lib/cron/cron-auth';
 
 // Define the queues - one for each job type
 const queues = {
-    'daily-refresh': new Queue('daily-refresh', { connection: redis }),
-    'hourly-refresh': new Queue('hourly-refresh', { connection: redis }),
-    'live-refresh': new Queue('live-refresh', { connection: redis }),
+    'daily-refresh': new Queue('daily-refresh', { 
+        connection: redis,
+        prefix: 'fpl-queue:'
+    }),
+    'hourly-refresh': new Queue('hourly-refresh', { 
+        connection: redis,
+        prefix: 'fpl-queue:'
+    }),
+    'live-refresh': new Queue('live-refresh', { 
+        connection: redis,
+        prefix: 'fpl-queue:'
+    }),
     'post-match-refresh': new Queue('post-match-refresh', {
         connection: redis,
+        prefix: 'fpl-queue:'
     }),
-    'schedule-update': new Queue('schedule-update', { connection: redis }),
+    'schedule-update': new Queue('schedule-update', { 
+        connection: redis,
+        prefix: 'fpl-queue:'
+    }),
 };
 
 export async function POST(request: NextRequest) {
