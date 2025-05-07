@@ -36,19 +36,24 @@ export function initializeWorkers() {
         });
 
         // Set up event handlers
+        workers[queueName].on('ready', () => {
+            console.log(`Worker for queue ${queueName} is ready to process jobs`);
+        });
+
+        workers[queueName].on('error', (error) => {
+            console.error(`Worker error in queue ${queueName}:`, error);
+        });
+
+        workers[queueName].on('active', (job) => {
+            console.log(`Job ${job.id} started processing in queue ${queueName}`);
+        });
+
         workers[queueName].on('completed', (job) => {
             console.log(`Job ${job.id} completed in queue ${queueName}`);
         });
 
         workers[queueName].on('failed', (job, error) => {
-            console.error(
-                `Job ${job?.id} failed in queue ${queueName}:`,
-                error
-            );
-        });
-
-        workers[queueName].on('active', (job) => {
-            console.log(`Job ${job.id} started in queue ${queueName}`);
+            console.error(`Job ${job?.id} failed in queue ${queueName}:`, error);
         });
 
         workers[queueName].on('stalled', (jobId) => {

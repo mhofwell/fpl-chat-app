@@ -27,6 +27,15 @@ app.set('views', path.join(__dirname, 'views'));
 initializeQueues();
 initializeWorkers();
 
+// Add to server.ts after initializing queues
+const testQueue = getQueue(QUEUE_NAMES.DAILY_REFRESH);
+if (testQueue) {
+  console.log('Adding test job to verify queue functionality');
+  testQueue.add('test-job', { test: true })
+    .then(job => console.log(`Test job added with ID: ${job.id}`))
+    .catch(err => console.error('Failed to add test job:', err));
+}
+
 // Middleware to verify API secret
 const verifyQueueSecret = (
     req: express.Request,

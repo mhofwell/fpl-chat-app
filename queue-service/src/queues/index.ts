@@ -25,6 +25,15 @@ export function initializeQueues() {
             defaultJobOptions: JOB_OPTIONS.default,
             prefix: REDIS_CONFIG.prefix,
         });
+
+        // Add this event listener
+        queues[queueName].on('waiting', (jobId: string) => {
+            console.log(`Job ${jobId} added to queue ${queueName}`);
+        });
+
+        queues[queueName].on('progress', (jobId: string) => {
+            console.log(`Job ${jobId} started in queue ${queueName}`);
+        });
     });
 
     console.log('All queues initialized');
