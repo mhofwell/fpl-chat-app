@@ -91,7 +91,7 @@ app.use('/dashboard', dashboardRouter);
 
 // API routes
 
-app.get('/debug/queues', verifyQueueSecret, async (req, res) => {
+app.get('/debug/queues', async (req, res) => {
     try {
         const queueStats: Record<string, any> = {};
 
