@@ -1,10 +1,10 @@
 # FPL Chat App
 
-A Fantasy Premier League (FPL) chat application with multiple components:
+A comprehensive Fantasy Premier League (FPL) application with multiple components:
 
-- **cron**: Scheduled jobs for data synchronization
-- **fpl-mcp-server**: Backend server with FPL tools and API integration
-- **fpl-nextjs-app**: Next.js frontend application
+- **cron**: Microservices for scheduled data refreshes and updates
+- **queue-service**: BullMQ-powered job processing system 
+- **fpl-nextjs-app**: Next.js frontend application with API routes
 
 ## Repository Structure
 

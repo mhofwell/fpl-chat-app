@@ -37,40 +37,6 @@ if (testQueue) {
         .catch((err) => console.error('Failed to add test job:', err));
 }
 
-// Add to queue-service/src/server.ts after queues and workers initialization
-setTimeout(async () => {
-    try {
-        console.log('=== TESTING BOTH DAILY AND HOURLY REFRESH WORKERS ===');
-
-        // Test daily refresh job (which we know works)
-        const dailyQueue = getQueue(QUEUE_NAMES.DAILY_REFRESH);
-        if (dailyQueue) {
-            console.log('Adding daily test job...');
-            const dailyJob = await dailyQueue.add('test-daily', {
-                test: true,
-                family: 0,
-            });
-            console.log(`Daily test job added with ID: ${dailyJob.id}`);
-        }
-
-        // Wait 5 seconds to ensure daily job completes
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-
-        // Test hourly refresh job
-        const hourlyQueue = getQueue(QUEUE_NAMES.HOURLY_REFRESH);
-        if (hourlyQueue) {
-            console.log('Adding hourly test job...');
-            const hourlyJob = await hourlyQueue.add('test-hourly', {
-                test: true,
-                family: 0,
-            });
-            console.log(`Hourly test job added with ID: ${hourlyJob.id}`);
-        }
-    } catch (error) {
-        console.error('Error adding test jobs:', error);
-    }
-}, 10000);
-
 // Middleware to verify API secret
 const verifyQueueSecret = (
     req: express.Request,
@@ -90,31 +56,6 @@ const verifyQueueSecret = (
 app.use('/dashboard', dashboardRouter);
 
 // API routes
-
-app.get('/redis/keys/:pattern', async (req, res) => {
-    try {
-        const { pattern } = req.params;
-        const keys = await redis.keys(pattern);
-        
-        // For each key, get the type and TTL
-        const keysWithDetails = await Promise.all(
-            keys.map(async (key) => {
-                const type = await redis.type(key);
-                const ttl = await redis.ttl(key);
-                return { key, type, ttl };
-            })
-        );
-        
-        res.json({
-            count: keys.length,
-            keys: keysWithDetails
-        });
-    } catch (error) {
-        console.error('Error searching Redis keys:', error);
-        res.status(500).json({ error: 'Failed to search Redis keys' });
-    }
-});
-
 app.get('/debug/queues', async (req, res) => {
     try {
         const queueStats: Record<string, any> = {};
