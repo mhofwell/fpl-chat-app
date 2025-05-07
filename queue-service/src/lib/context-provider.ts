@@ -28,7 +28,14 @@ async function getCurrentGameweek() {
       .eq('key', 'current_status')
       .single();
     
-    if (error) throw error;
+    if (error) {
+      // Check for the specific "no rows" error
+      if (error.code === 'PGRST116') {
+        console.info('No current gameweek found in system_meta table. This is expected for a fresh setup.');
+        return null;
+      }
+      throw error;
+    }
     
     return data?.value ? parseInt(data.value, 10) : null;
   } catch (error) {
@@ -40,6 +47,7 @@ async function getCurrentGameweek() {
 // Get last refresh time for a specific job type
 async function getLastRefreshTime(jobType: string) {
   try {
+    // Use .maybeSingle() instead of .single() to avoid error when no rows found
     const { data, error } = await supabase
       .from('refresh_logs')
       .select('created_at')
@@ -47,13 +55,22 @@ async function getLastRefreshTime(jobType: string) {
       .eq('state', 'completed')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
-    if (error) throw error;
+    if (typeof error === 'object' && error && 'code' in error && error.code === 'PGRST116') {
+      console.info(`No previous refresh logs found for ${jobType}. This is expected for a fresh setup.`);
+    } else {
+      console.error(`Error fetching last refresh time for ${jobType}:`, error);
+    }
     
     return data ? data.created_at : null;
   } catch (error) {
-    console.error(`Error fetching last refresh time for ${jobType}:`, error);
+    // Only log as error if it's not the expected "no rows" error
+    if (typeof error === 'object' && error && 'code' in error && error.code === 'PGRST116') {
+      console.info(`No previous refresh logs found for ${jobType}. This is expected for a fresh setup.`);
+    } else {
+      console.error(`Error fetching last refresh time for ${jobType}:`, error);
+    }
     return null;
   }
 }
