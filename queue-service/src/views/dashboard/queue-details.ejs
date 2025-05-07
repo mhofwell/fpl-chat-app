@@ -18,6 +18,15 @@
                     <button class="tab-btn active" data-tab="waiting">
                         Upcoming Jobs (<%= jobs.waiting.length %>)
                     </button>
+                    <button class="tab-btn" data-tab="active">
+                        Active Jobs (<%= jobs.active.length %>)
+                    </button>
+                    <button class="tab-btn" data-tab="stalled">
+                        Stalled Jobs (<%= jobs.stalled.length %>)
+                    </button>
+                    <button class="tab-btn" data-tab="delayed">
+                        Delayed Jobs (<%= jobs.delayed.length %>)
+                    </button>
                     <button class="tab-btn" data-tab="completed">
                         Completed Jobs (<%= jobs.completed.length %>)
                     </button>
@@ -140,6 +149,72 @@
                     <div class="empty-state">No failed jobs</div>
                     <% } %>
                 </div>
+
+                <div id="stalled" class="tab-content">
+                    <% if (jobs.stalled.length > 0) { %>
+                    <div class="action-bar">
+                        <button class="retry-all-btn" data-queue="<%= queueName %>">Retry All Stalled Jobs</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                                <th>Data</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.stalled.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td><span class="status-badge stalled">Stalled</span></td>
+                                <td><%= new Date(job.timestamp).toLocaleString() %></td>
+                                <td><pre><%= JSON.stringify(job.data, null, 2) %></pre></td>
+                                <td>
+                                    <button class="retry-job" data-job-id="<%= job.id %>" data-queue="<%= queueName %>">Retry</button>
+                                    <button class="remove-job" data-job-id="<%= job.id %>" data-queue="<%= queueName %>">Remove</button>
+                                </td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No stalled jobs</div>
+                    <% } %>
+                </div>
+
+                <div id="delayed" class="tab-content">
+                    <% if (jobs.delayed.length > 0) { %>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Scheduled For</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.delayed.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td><span class="status-badge delayed">Delayed</span></td>
+                                <td><%= new Date(job.timestamp + (job.opts.delay || 0)).toLocaleString() %></td>
+                                <td><pre><%= JSON.stringify(job.data, null, 2) %></pre></td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No delayed jobs</div>
+                    <% } %>
+                </div>
             </div>
         </div>
 
@@ -170,6 +245,33 @@
             setTimeout(() => {
                 window.location.reload();
             }, 30000);
+
+            // Clean stalled jobs
+            document.querySelectorAll('.retry-all-btn').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const queueName = button.getAttribute('data-queue');
+                    if (!queueName) return;
+                    
+                    try {
+                        const response = await fetch(`/dashboard/queue/${queueName}/clean-stalled`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                        });
+                        
+                        const result = await response.json();
+                        if (result.success) {
+                            alert(`${result.message}`);
+                            window.location.reload();
+                        } else {
+                            alert(`Error: ${result.error}`);
+                        }
+                    } catch (error) {
+                        alert('Failed to clean stalled jobs');
+                    }
+                });
+            });
         </script>
     </body>
 </html>

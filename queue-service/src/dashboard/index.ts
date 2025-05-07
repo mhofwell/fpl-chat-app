@@ -49,14 +49,16 @@ router.get('/queue/:queueName', async (req, res) => {
     }
 
     try {
-        // Get queue metrics
-        const [jobCounts, activeJobs, waitingJobs, completedJobs, failedJobs] =
+        // Get queue metrics - add stalled and delayed jobs
+        const [jobCounts, activeJobs, waitingJobs, completedJobs, failedJobs, stalledJobs, delayedJobs] =
             await Promise.all([
                 queue.getJobCounts(),
                 queue.getJobs(['active'], 0, 10),
                 queue.getJobs(['waiting'], 0, 10),
                 queue.getJobs(['completed'], 0, 10),
                 queue.getJobs(['failed'], 0, 10),
+                queue.getJobs(['waiting'], 0, 10).then(jobs => jobs.filter(job => job.isFailed())),
+                queue.getJobs(['delayed'], 0, 10)
             ]);
 
         res.render('dashboard/queue-details', {
@@ -68,6 +70,8 @@ router.get('/queue/:queueName', async (req, res) => {
                 waiting: waitingJobs,
                 completed: completedJobs,
                 failed: failedJobs,
+                stalled: stalledJobs,
+                delayed: delayedJobs
             },
         });
     } catch (error) {
@@ -164,6 +168,39 @@ router.post('/queue/:queueName/add-job', async (req, res) => {
     } catch (error) {
         console.error(`Error adding job to queue ${queueName}:`, error);
         res.status(500).json({ error: 'Failed to add job' });
+    }
+});
+
+// Job management - Clean stalled jobs
+router.post('/queue/:queueName/clean-stalled', async (req, res) => {
+    const { queueName } = req.params;
+
+    // Validate queue name
+    if (!Object.values(QUEUE_NAMES).includes(queueName)) {
+        return res.status(400).json({ error: 'Invalid queue name' });
+    }
+
+    const queue = getQueue(queueName);
+    if (!queue) {
+        return res.status(500).json({ error: 'Queue not initialized' });
+    }
+
+    try {
+        // Get all stalled jobs
+        const stalledJobs = await queue.getJobs(['stalled'], 0, 100);
+        
+        // Remove or retry them
+        const promises = stalledJobs.map(job => job.retry());
+        await Promise.all(promises);
+        
+        res.json({
+            success: true,
+            count: stalledJobs.length,
+            message: `Retried ${stalledJobs.length} stalled jobs`
+        });
+    } catch (error) {
+        console.error(`Error cleaning stalled jobs in queue ${queueName}:`, error);
+        res.status(500).json({ error: 'Failed to clean stalled jobs' });
     }
 });
 

@@ -7,23 +7,23 @@ import { checkCronSecret } from '@/lib/cron/cron-auth';
 const queues = {
     'daily-refresh': new Queue('daily-refresh', { 
         connection: redis,
-        prefix: 'fpl-queue:'
+        prefix: 'fpl-queue'
     }),
     'hourly-refresh': new Queue('hourly-refresh', { 
         connection: redis,
-        prefix: 'fpl-queue:'
+        prefix: 'fpl-queue'
     }),
     'live-refresh': new Queue('live-refresh', { 
         connection: redis,
-        prefix: 'fpl-queue:'
+        prefix: 'fpl-queue'
     }),
     'post-match-refresh': new Queue('post-match-refresh', {
         connection: redis,
-        prefix: 'fpl-queue:'
+        prefix: 'fpl-queue'
     }),
     'schedule-update': new Queue('schedule-update', { 
         connection: redis,
-        prefix: 'fpl-queue:'
+        prefix: 'fpl-queue'
     }),
 };
 
