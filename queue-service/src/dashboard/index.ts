@@ -187,7 +187,7 @@ router.post('/queue/:queueName/clean-stalled', async (req, res) => {
 
     try {
         // Get all stalled jobs
-        const stalledJobs = await queue.getJobs(['stalled'], 0, 100);
+        const stalledJobs = await queue.getJobs(['waiting'], 0, 100).then(jobs => jobs.filter(job => job.isFailed()));
         
         // Remove or retry them
         const promises = stalledJobs.map(job => job.retry());
