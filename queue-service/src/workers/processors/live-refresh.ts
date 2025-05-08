@@ -37,7 +37,7 @@ export async function liveRefreshProcessor(job: Job) {
         queryParams.append('family', '0'); // Keep for compatibility
         
         // Build the API endpoint URL
-        const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/live?family=0`;
+        const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/live-updates?${queryParams}`;
 
         console.log(`[API-CALL] Calling live refresh endpoint at ${apiEndpoint}`);
         
