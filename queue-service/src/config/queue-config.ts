@@ -29,10 +29,34 @@ export const JOB_OPTIONS = {
         removeOnFail: 100, // Keep only last 100 failed jobs
     },
 
-    // Specific options for each job type can be added here
-    // Example: override options for daily refresh jobs
+    // Specific options for each job type
+    [QUEUE_NAMES.LIVE_REFRESH]: {
+        attempts: 3,
+        priority: 1, // Highest priority for live updates
+        timeout: 120000, // 2 minutes
+    },
+    
+    [QUEUE_NAMES.POST_MATCH_REFRESH]: {
+        attempts: 3,
+        priority: 2, // Very high priority
+        timeout: 180000, // 3 minutes
+    },
+    
     [QUEUE_NAMES.DAILY_REFRESH]: {
         attempts: 5, // More attempts for important daily refresh
+        priority: 5, // High priority
         timeout: 300000, // 5 minutes timeout
     },
+    
+    [QUEUE_NAMES.HOURLY_REFRESH]: {
+        attempts: 3,
+        priority: 10, // Medium priority
+        timeout: 180000, // 3 minutes
+    },
+    
+    [QUEUE_NAMES.SCHEDULER_MANAGER]: {
+        attempts: 3,
+        priority: 15, // Lower priority
+        timeout: 120000, // 2 minutes
+    }
 };

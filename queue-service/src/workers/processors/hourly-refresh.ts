@@ -1,48 +1,103 @@
 import { Job } from 'bullmq';
 import fetch from 'node-fetch';
 import { config } from '../../config';
+import { getJobContext } from '../../lib/context-provider';
 
 export async function hourlyRefreshProcessor(job: Job) {
     try {
-        console.log(`Processing hourly refresh job ${job.id}`);
-        console.log('Job data:', JSON.stringify(job.data));
+        const originalJobData = { ...job.data };
 
-        // Call the API endpoint that contains the execution logic
-        const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/hourly?family=0`;
+        console.log(`[JOB-INFO] Job ${job.id} in ${job.name}. Fetching full context from provider...`);
+        const freshContext = await getJobContext(job.name, originalJobData.triggeredBy || 'system_processor_default');
+        
+        const timestamp = originalJobData.timestamp || freshContext.timestamp;
+        const triggeredBy = originalJobData.triggeredBy || freshContext.triggeredBy;
+        const queueName = job.name;
 
-        console.log(`Calling hourly refresh endpoint at ${apiEndpoint}`);
-        let responseText;
+        const gameweek = (originalJobData.gameweek !== undefined && originalJobData.gameweek !== null)
+                         ? originalJobData.gameweek
+                         : freshContext.gameweek;
+        const isMatchDay = (originalJobData.isMatchDay !== undefined)
+                           ? originalJobData.isMatchDay
+                           : freshContext.isMatchDay;
+        
+        const refreshType = freshContext.refreshType;
+        const lastRefreshTime = freshContext.lastRefreshTime;
 
-        try {
-            const response = await fetch(apiEndpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${config.cron.secret}`,
-                },
-            });
+        console.log(`[JOB-START] Processing ${queueName} job ${job.id}`, {
+            refreshType,
+            gameweek,
+            lastRefreshTime,
+            triggeredBy,
+            isMatchDay,
+            jobTimestamp: new Date(timestamp).toISOString(),
+            processingStarted: new Date().toISOString()
+        });
 
-            console.log(
-                `Response status from hourly endpoint: ${response.status}`
-            );
-            responseText = await response.text();
+        const queryParams = new URLSearchParams();
+        if (gameweek) queryParams.append('gameweek', gameweek.toString());
+        if (refreshType) queryParams.append('type', refreshType);
+        if (triggeredBy) queryParams.append('source', triggeredBy);
+        if (isMatchDay) queryParams.append('matchDay', isMatchDay.toString());
+        queryParams.append('family', '0');
+        
+        const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/hourly?${queryParams}`;
 
-            if (!response.ok) {
-                throw new Error(
-                    `HTTP error! Status: ${response.status}, Response: ${responseText}`
-                );
-            }
+        console.log(`[API-CALL] Calling hourly refresh endpoint at ${apiEndpoint}`);
+        
+        const response = await fetch(apiEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${config.cron.secret}`,
+                'X-Job-ID': (job.id ?? 'unknown').toString(),
+                'X-Queue-Name': queueName
+            },
+            body: JSON.stringify({
+                jobId: job.id,
+                refreshType,
+                gameweek,
+                lastRefreshTime,
+                triggeredBy,
+                isMatchDay,
+                timestamp,
+                processingStarted: Date.now()
+            })
+        });
 
-            const result = JSON.parse(responseText);
-            console.log('Hourly refresh completed:', result);
-            return result;
-        } catch (fetchError) {
-            console.error('Fetch error in hourly refresh:', fetchError);
-            console.error('Response text if available:', responseText);
-            throw fetchError;
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
         }
+
+        const result = await response.json();
+        
+        const enhancedResult = {
+            ...result,
+            jobContext: {
+                id: job.id,
+                refreshType,
+                gameweek,
+                lastRefreshTime,
+                triggeredBy,
+                isMatchDay,
+                queueName
+            },
+            timing: {
+                queuedAt: new Date(timestamp).toISOString(),
+                processedAt: new Date().toISOString(),
+                processingDuration: Date.now() - timestamp
+            }
+        };
+        
+        console.log(`[JOB-COMPLETE] ${queueName} job ${job.id} completed:`, enhancedResult);
+        return enhancedResult;
+
     } catch (error) {
-        console.error('Error in hourly refresh processor:', error);
+        console.error(`[JOB-ERROR] Error in ${job.data.queueName || job.name || 'hourly-refresh'} processor for job ${job.id}:`, {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            jobData: job.data,
+            timestamp: new Date().toISOString()
+        });
         throw error;
     }
 }

@@ -7,6 +7,59 @@
         <link rel="stylesheet" href="/styles.css" />
     </head>
     <body>
+        <%
+            function formatTimestampDual(timestamp) {
+                if (!timestamp) return 'N/A';
+                const date = new Date(timestamp);
+                const options = {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                };
+                const pdtOptions = {...options, timeZone: 'America/Los_Angeles', timeZoneName: 'short'};
+                const utcOptions = {...options, timeZone: 'UTC', timeZoneName: 'short'};
+
+                let pdtString = date.toLocaleString('en-US', pdtOptions);
+                let utcString = date.toLocaleString('en-US', utcOptions);
+
+                // Add explicit labels if 'short' timeZoneName doesn't include them or for more clarity
+                // This depends on browser's toLocaleString implementation for 'short'
+                if (!pdtString.includes('PDT') && !pdtString.includes('PST')) {
+                    pdtString += ' PDT';
+                }
+                if (!utcString.includes('UTC') && !utcString.includes('GMT')) { // GMT is often used interchangeably with UTC in output
+                    utcString += ' UTC';
+                }
+                
+                return `${pdtString}<br>${utcString}`;
+            }
+
+            // Define the missing function here
+            function getJobTypeBadgeClass(refreshType) {
+                if (!refreshType) return 'light'; // Default badge style for undefined types
+                const type = String(refreshType).toLowerCase();
+                switch (type) {
+                    case 'full':
+                    case 'full-sync':
+                        return 'primary'; // Example: Blue
+                    case 'incremental':
+                    case 'hourly': // Matching your log: "hourly-refresh"
+                    case 'hourly-refresh':
+                        return 'info';    // Example: Light Blue/Teal
+                    case 'live':
+                    case 'live-update':
+                        return 'success'; // Example: Green
+                    case 'schedule':
+                    case 'schedule-update':
+                        return 'warning'; // Example: Yellow (ensure dark text for readability)
+                    case 'post-match':
+                        return 'dark';    // Example: Dark Grey
+                    case 'daily-refresh':
+                        return 'secondary'; // Example: Grey
+                    default:
+                        return 'light';   // A light/default badge for other types
+                }
+            }
+        %>
         <div class="container">
             <div class="header">
                 <h1>Queue: <%= queueName %></h1>
@@ -16,7 +69,7 @@
             <div class="tab-container">
                 <div class="tab-buttons">
                     <button class="tab-btn active" data-tab="waiting">
-                        Upcoming Jobs (<%= jobs.waiting.length %>)
+                        Jobs Waiting (<%= jobs.waiting.length %>)
                     </button>
                     <button class="tab-btn" data-tab="active">
                         Active Jobs (<%= jobs.active.length %>)
@@ -51,14 +104,33 @@
                             <tr>
                                 <td><%= job.id %></td>
                                 <td><%= job.name %></td>
+                                <td><%- formatTimestampDual(job.timestamp) %></td>
                                 <td>
-                                    <%= new Date(job.timestamp).toLocaleString()
-                                    %>
-                                </td>
-                                <td>
-                                    <pre>
-<%= JSON.stringify(job.data, null, 2) %></pre
-                                    >
+                                    <div class="job-card">
+                                        <h3>Job #<%= job.id %></h3>
+                                        <div class="job-meta">
+                                            <span class="badge badge-<%= getJobTypeBadgeClass(job.data.refreshType) %>">
+                                                <%= job.data.refreshType || 'unknown' %>
+                                            </span>
+                                            <span class="badge badge-info">
+                                                GW: <%= job.data.gameweek || 'N/A' %>
+                                            </span>
+                                            <span class="badge badge-secondary">
+                                                By: <%= job.data.triggeredBy || 'unknown' %>
+                                            </span>
+                                            <% if(job.data.isMatchDay) { %>
+                                                <span class="badge badge-danger">Match Day</span>
+                                            <% } %>
+                                        </div>
+                                        <div class="job-timestamp">
+                                            Added: <%- formatTimestampDual(job.timestamp) %>
+                                        </div>
+                                        <% if(job.failedReason) { %>
+                                            <div class="job-error">
+                                                Error: <%= job.failedReason %>
+                                            </div>
+                                        <% } %>
+                                    </div>
                                 </td>
                             </tr>
                             <% }); %>
@@ -66,6 +138,61 @@
                     </table>
                     <% } else { %>
                     <div class="empty-state">No upcoming jobs</div>
+                    <% } %>
+                </div>
+
+                <div id="active" class="tab-content">
+                    <% if (jobs.active.length > 0) { %>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Started At</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.active.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td>
+                                    <span class="status-badge active">Active</span>
+                                </td>
+                                <td><%- formatTimestampDual(job.processedOn) %></td>
+                                <td>
+                                    <div class="job-card">
+                                        <h3>Job #<%= job.id %></h3>
+                                        <div class="job-meta">
+                                            <span class="badge badge-<%= getJobTypeBadgeClass(job.data.refreshType) %>">
+                                                <%= job.data.refreshType || 'unknown' %>
+                                            </span>
+                                            <span class="badge badge-info">
+                                                GW: <%= job.data.gameweek || 'N/A' %>
+                                            </span>
+                                            <span class="badge badge-secondary">
+                                                By: <%= job.data.triggeredBy || 'unknown' %>
+                                            </span>
+                                            <% if(job.data.isMatchDay) { %>
+                                                <span class="badge badge-danger">Match Day</span>
+                                            <% } %>
+                                        </div>
+                                        <div class="job-timestamp">
+                                            Processed At: <%- formatTimestampDual(job.processedOn) %>
+                                        </div>
+                                        <% if(job.data) { %>
+                                            <pre><%= JSON.stringify(job.data, null, 2) %></pre>
+                                        <% } %>
+                                    </div>
+                                </td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No active jobs</div>
                     <% } %>
                 </div>
 
@@ -92,10 +219,7 @@
                                         >Completed</span
                                     >
                                 </td>
-                                <td>
-                                    <%= new
-                                    Date(job.finishedOn).toLocaleString() %>
-                                </td>
+                                <td><%- formatTimestampDual(job.finishedOn) %></td>
                                 <td>
                                     <%= Math.round((job.finishedOn -
                                     job.processedOn) / 1000) %> sec
@@ -136,10 +260,7 @@
                                         >Failed</span
                                     >
                                 </td>
-                                <td>
-                                    <%= new
-                                    Date(job.finishedOn).toLocaleString() %>
-                                </td>
+                                <td><%- formatTimestampDual(job.finishedOn) %></td>
                                 <td><pre><%= job.failedReason %></pre></td>
                             </tr>
                             <% }); %>
@@ -172,7 +293,7 @@
                                 <td><%= job.id %></td>
                                 <td><%= job.name %></td>
                                 <td><span class="status-badge stalled">Stalled</span></td>
-                                <td><%= new Date(job.timestamp).toLocaleString() %></td>
+                                <td><%- formatTimestampDual(job.timestamp) %></td>
                                 <td><pre><%= JSON.stringify(job.data, null, 2) %></pre></td>
                                 <td>
                                     <button class="retry-job" data-job-id="<%= job.id %>" data-queue="<%= queueName %>">Retry</button>
@@ -205,7 +326,7 @@
                                 <td><%= job.id %></td>
                                 <td><%= job.name %></td>
                                 <td><span class="status-badge delayed">Delayed</span></td>
-                                <td><%= new Date(job.timestamp + (job.opts.delay || 0)).toLocaleString() %></td>
+                                <td><%- formatTimestampDual(job.timestamp + (job.opts.delay || 0)) %></td>
                                 <td><pre><%= JSON.stringify(job.data, null, 2) %></pre></td>
                             </tr>
                             <% }); %>

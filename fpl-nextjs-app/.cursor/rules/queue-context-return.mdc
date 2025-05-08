@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+{
+refreshType: <variable for refresh type>
+gameweek: <variable for game week>
+triggeredBy: <variable for triggered by>
+priority: <variable for priority>
+timestamp: Date.now()
+}
