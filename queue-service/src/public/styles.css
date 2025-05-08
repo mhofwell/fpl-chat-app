@@ -365,3 +365,52 @@ pre {
     margin-top: 8px;
     font-size: 0.9em;
 }
+
+/* In your public/styles.css (ensure these are dark-mode friendly) */
+.badge { /* Basic badge styling if not already present */
+    display: inline-block;
+    padding: .35em .65em; /* Adjust padding as needed */
+    font-size: .75em;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff; /* Default text color, adjust per badge type */
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: .35rem; /* Bootstrap 5 uses .375rem, .25rem is also common */
+}
+
+.badge-primary {
+    background-color: #0d6efd; /* Example: Bootstrap Blue */
+    color: #fff;
+}
+.badge-secondary {
+    background-color: #6c757d; /* Example: Bootstrap Grey */
+    color: #fff;
+}
+.badge-success {
+    background-color: #198754; /* Example: Bootstrap Green */
+    color: #fff;
+}
+.badge-danger {
+    background-color: #dc3545; /* Example: Bootstrap Red */
+    color: #fff;
+}
+.badge-warning {
+    background-color: #ffc107; /* Example: Bootstrap Yellow */
+    color: #212529; /* Dark text for light warning background */
+}
+.badge-info {
+    background-color: #0dcaf0; /* Example: Bootstrap Teal/Cyan */
+    color: #fff; /* Or #000 if the info color is very light */
+}
+.badge-light {
+    background-color: #f8f9fa; /* Example: Bootstrap Light Grey */
+    color: #212529; /* Dark text for light background */
+    border: 1px solid #adb5bd; /* Optional border for light badges */
+}
+.badge-dark {
+    background-color: #212529; /* Example: Bootstrap Dark Grey/Black */
+    color: #fff;
+}
+/* Add any other custom badge types your getJobTypeBadgeClass might return */

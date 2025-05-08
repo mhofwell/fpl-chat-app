@@ -32,6 +32,33 @@
                 
                 return `${pdtString}<br>${utcString}`;
             }
+
+            // Define the missing function here
+            function getJobTypeBadgeClass(refreshType) {
+                if (!refreshType) return 'light'; // Default badge style for undefined types
+                const type = String(refreshType).toLowerCase();
+                switch (type) {
+                    case 'full':
+                    case 'full-sync':
+                        return 'primary'; // Example: Blue
+                    case 'incremental':
+                    case 'hourly': // Matching your log: "hourly-refresh"
+                    case 'hourly-refresh':
+                        return 'info';    // Example: Light Blue/Teal
+                    case 'live':
+                    case 'live-update':
+                        return 'success'; // Example: Green
+                    case 'schedule':
+                    case 'schedule-update':
+                        return 'warning'; // Example: Yellow (ensure dark text for readability)
+                    case 'post-match':
+                        return 'dark';    // Example: Dark Grey
+                    case 'daily-refresh':
+                        return 'secondary'; // Example: Grey
+                    default:
+                        return 'light';   // A light/default badge for other types
+                }
+            }
         %>
         <div class="container">
             <div class="header">
