@@ -41,7 +41,7 @@ export async function scheduleUpdateProcessor(job: Job) {
         if (refreshType) queryParams.append('type', refreshType); 
         if (triggeredBy) queryParams.append('source', triggeredBy);
         
-        const apiEndpoint = `${config.nextApp.url}/api/cron/scheduler/update?${queryParams}`;
+        const apiEndpoint = `${config.nextApp.url}/api/cron/schedule/update?${queryParams}`;
 
         console.log(`[API-CALL] Calling schedule update endpoint at ${apiEndpoint}`);
         
