@@ -15,9 +15,22 @@
                     year: 'numeric', month: 'short', day: 'numeric',
                     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
                 };
-                const utcString = date.toLocaleString('en-US', {...options, timeZone: 'UTC', timeZoneName: 'shortOffset'});
-                const pdtString = date.toLocaleString('en-US', {...options, timeZone: 'America/Los_Angeles', timeZoneName: 'shortOffset'});
-                return `${utcString}<br>${pdtString}`;
+                const pdtOptions = {...options, timeZone: 'America/Los_Angeles', timeZoneName: 'short'};
+                const utcOptions = {...options, timeZone: 'UTC', timeZoneName: 'short'};
+
+                let pdtString = date.toLocaleString('en-US', pdtOptions);
+                let utcString = date.toLocaleString('en-US', utcOptions);
+
+                // Add explicit labels if 'short' timeZoneName doesn't include them or for more clarity
+                // This depends on browser's toLocaleString implementation for 'short'
+                if (!pdtString.includes('PDT') && !pdtString.includes('PST')) {
+                    pdtString += ' PDT';
+                }
+                if (!utcString.includes('UTC') && !utcString.includes('GMT')) { // GMT is often used interchangeably with UTC in output
+                    utcString += ' UTC';
+                }
+                
+                return `${pdtString}<br>${utcString}`;
             }
         %>
         <div class="container">
@@ -98,6 +111,61 @@
                     </table>
                     <% } else { %>
                     <div class="empty-state">No upcoming jobs</div>
+                    <% } %>
+                </div>
+
+                <div id="active" class="tab-content">
+                    <% if (jobs.active.length > 0) { %>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Started At</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% jobs.active.forEach(job => { %>
+                            <tr>
+                                <td><%= job.id %></td>
+                                <td><%= job.name %></td>
+                                <td>
+                                    <span class="status-badge active">Active</span>
+                                </td>
+                                <td><%- formatTimestampDual(job.processedOn) %></td>
+                                <td>
+                                    <div class="job-card">
+                                        <h3>Job #<%= job.id %></h3>
+                                        <div class="job-meta">
+                                            <span class="badge badge-<%= getJobTypeBadgeClass(job.data.refreshType) %>">
+                                                <%= job.data.refreshType || 'unknown' %>
+                                            </span>
+                                            <span class="badge badge-info">
+                                                GW: <%= job.data.gameweek || 'N/A' %>
+                                            </span>
+                                            <span class="badge badge-secondary">
+                                                By: <%= job.data.triggeredBy || 'unknown' %>
+                                            </span>
+                                            <% if(job.data.isMatchDay) { %>
+                                                <span class="badge badge-danger">Match Day</span>
+                                            <% } %>
+                                        </div>
+                                        <div class="job-timestamp">
+                                            Processed At: <%- formatTimestampDual(job.processedOn) %>
+                                        </div>
+                                        <% if(job.data) { %>
+                                            <pre><%= JSON.stringify(job.data, null, 2) %></pre>
+                                        <% } %>
+                                    </div>
+                                </td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <div class="empty-state">No active jobs</div>
                     <% } %>
                 </div>
 
