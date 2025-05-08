@@ -12,7 +12,6 @@ console.log(`[CRON-START] Starting FPL hourly refresh scheduler at ${new Date().
     // Enhanced job data without family:0
     const result = await addJobToQueue('hourly-refresh', {
       triggeredBy: 'hourly-cron-schedule',
-      refreshType: 'incremental'
     });
     
     console.log('[CRON-JOB] Hourly refresh job added to queue:', result);

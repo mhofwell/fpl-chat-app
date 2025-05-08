@@ -28,7 +28,6 @@ async function shouldRunPostMatchRefresh() {
       // Enhanced job data without family:0
       const result = await addJobToQueue('post-match-refresh', {
         triggeredBy: 'post-match-cron-schedule',
-        refreshType: 'post-match'
       });
       
       console.log('[CRON-JOB] Post-match refresh job added to queue:', result);

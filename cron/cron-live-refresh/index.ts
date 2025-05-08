@@ -27,9 +27,7 @@ async function shouldRunLiveRefresh() {
       
       // Enhanced job data without family:0
       const result = await addJobToQueue('live-refresh', {
-        triggeredBy: 'live-cron-schedule',
-        refreshType: 'live',
-        isMatchDay: true // We assume this is true if shouldRun is true
+        triggeredBy: 'live-game-schedule',
       });
       
       console.log('[CRON-JOB] Live refresh job added to queue:', result);

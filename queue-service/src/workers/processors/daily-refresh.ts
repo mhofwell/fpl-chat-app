@@ -1,47 +1,59 @@
 import { Job } from 'bullmq';
 import fetch from 'node-fetch';
 import { config } from '../../config';
+import { getJobContext } from '../../lib/context-provider';
 
 export async function dailyRefreshProcessor(job: Job) {
     try {
-        // Extract job data with defaults for backward compatibility
-        const { 
-            refreshType = 'full',
-            gameweek = null,
-            lastRefreshTime = null,
-            triggeredBy = 'system',
-            isMatchDay = false,
-            timestamp = Date.now(),
-            queueName = 'daily-refresh'
-        } = job.data;
+        const originalJobData = { ...job.data }; // Keep a copy of the original data
 
-        // Enhanced structured logging
+        console.log(`[JOB-INFO] Job ${job.id} in ${job.name}. Fetching full context from provider...`);
+        // Get the fresh context. Pass the original triggeredBy if available.
+        const freshContext = await getJobContext(job.name, originalJobData.triggeredBy || 'system_processor_default');
+        
+        // --- Combine original job data with fresh context ---
+        // Essential fields from the original job or job object itself:
+        const timestamp = originalJobData.timestamp || freshContext.timestamp; // Prefer original job creation timestamp
+        const triggeredBy = originalJobData.triggeredBy || freshContext.triggeredBy; // Prefer original trigger
+        const queueName = job.name; // Always from the job object
+
+        // Contextual fields: prioritize explicit values from original job data if they exist,
+        // otherwise use values from the fresh context.
+        const gameweek = (originalJobData.gameweek !== undefined && originalJobData.gameweek !== null)
+                         ? originalJobData.gameweek
+                         : freshContext.gameweek;
+        const isMatchDay = (originalJobData.isMatchDay !== undefined)
+                           ? originalJobData.isMatchDay
+                           : freshContext.isMatchDay;
+        
+        // Fields typically best determined by getJobContext based on queueName and current state:
+        const refreshType = freshContext.refreshType;
+        const lastRefreshTime = freshContext.lastRefreshTime;
+        // const priority = freshContext.priority; // If needed later by API
+
+        // Enhanced structured logging with the fully resolved context
         console.log(`[JOB-START] Processing ${queueName} job ${job.id}`, {
             refreshType,
             gameweek,
             lastRefreshTime,
             triggeredBy,
             isMatchDay,
-            jobTimestamp: new Date(timestamp).toISOString(),
-            processingStarted: new Date().toISOString()
+            jobTimestamp: new Date(timestamp).toISOString(), // This is the original job enqueued time
+            processingStarted: new Date().toISOString()    // This is when processing actually begins
         });
 
-        // Build query parameters for API call
+        // Build query parameters for API call using resolved variables
         const queryParams = new URLSearchParams();
-        
-        // Include all relevant context in URL parameters
         if (gameweek) queryParams.append('gameweek', gameweek.toString());
         if (refreshType) queryParams.append('type', refreshType);
         if (triggeredBy) queryParams.append('source', triggeredBy);
         if (isMatchDay) queryParams.append('matchDay', isMatchDay.toString());
-        queryParams.append('family', '0'); // Keep for compatibility
+        queryParams.append('family', '0'); 
         
-        // Build the API endpoint URL
         const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/daily?${queryParams}`;
 
         console.log(`[API-CALL] Calling daily refresh endpoint at ${apiEndpoint}`);
         
-        // Make the API call with complete job data in body
         const response = await fetch(apiEndpoint, {
             method: 'POST',
             headers: {
@@ -50,7 +62,6 @@ export async function dailyRefreshProcessor(job: Job) {
                 'X-Job-ID': (job.id ?? 'unknown').toString(),
                 'X-Queue-Name': queueName
             },
-            // Include complete job data in request body
             body: JSON.stringify({
                 jobId: job.id,
                 refreshType,
@@ -58,7 +69,7 @@ export async function dailyRefreshProcessor(job: Job) {
                 lastRefreshTime,
                 triggeredBy,
                 isMatchDay,
-                timestamp,
+                timestamp, // Original job enqueued time
                 processingStarted: Date.now()
             })
         });
@@ -69,7 +80,6 @@ export async function dailyRefreshProcessor(job: Job) {
 
         const result = await response.json();
         
-        // Create enhanced result object with job context
         const enhancedResult = {
             ...result,
             jobContext: {
@@ -84,19 +94,17 @@ export async function dailyRefreshProcessor(job: Job) {
             timing: {
                 queuedAt: new Date(timestamp).toISOString(),
                 processedAt: new Date().toISOString(),
-                processingDuration: Date.now() - timestamp
+                processingDuration: Date.now() - timestamp 
             }
         };
         
-        // Enhanced structured logging of result
         console.log(`[JOB-COMPLETE] ${queueName} job ${job.id} completed:`, enhancedResult);
-
         return enhancedResult;
+
     } catch (error) {
-        // Enhanced error logging
         console.error(`[JOB-ERROR] Error in ${job.data.queueName || 'daily-refresh'} processor for job ${job.id}:`, {
             error: error instanceof Error ? error.message : 'Unknown error',
-            jobData: job.data,
+            jobData: job.data, // Log original data for easier debugging of what was initially passed
             timestamp: new Date().toISOString()
         });
         throw error;

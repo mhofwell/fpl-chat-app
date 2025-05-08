@@ -170,7 +170,6 @@ async function updateSchedule(windows: ScheduleWindow[]): Promise<boolean> {
     // Enhanced job data without family:0
     const result = await addJobToQueue('schedule-update', {
       triggeredBy: 'scheduler-cron-schedule',
-      refreshType: 'schedule'
     });
     
     console.log('[CRON-JOB] Schedule update job added to queue:', result);

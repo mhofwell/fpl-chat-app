@@ -1,21 +1,29 @@
 import { Job } from 'bullmq';
 import fetch from 'node-fetch';
 import { config } from '../../config';
+import { getJobContext } from '../../lib/context-provider';
 
 export async function hourlyRefreshProcessor(job: Job) {
     try {
-        // Extract job data with defaults for backward compatibility
-        const { 
-            refreshType = 'incremental',
-            gameweek = null,
-            lastRefreshTime = null,
-            triggeredBy = 'system',
-            isMatchDay = false,
-            timestamp = Date.now(),
-            queueName = 'hourly-refresh'
-        } = job.data;
+        const originalJobData = { ...job.data };
 
-        // Enhanced structured logging
+        console.log(`[JOB-INFO] Job ${job.id} in ${job.name}. Fetching full context from provider...`);
+        const freshContext = await getJobContext(job.name, originalJobData.triggeredBy || 'system_processor_default');
+        
+        const timestamp = originalJobData.timestamp || freshContext.timestamp;
+        const triggeredBy = originalJobData.triggeredBy || freshContext.triggeredBy;
+        const queueName = job.name;
+
+        const gameweek = (originalJobData.gameweek !== undefined && originalJobData.gameweek !== null)
+                         ? originalJobData.gameweek
+                         : freshContext.gameweek;
+        const isMatchDay = (originalJobData.isMatchDay !== undefined)
+                           ? originalJobData.isMatchDay
+                           : freshContext.isMatchDay;
+        
+        const refreshType = freshContext.refreshType;
+        const lastRefreshTime = freshContext.lastRefreshTime;
+
         console.log(`[JOB-START] Processing ${queueName} job ${job.id}`, {
             refreshType,
             gameweek,
@@ -26,22 +34,17 @@ export async function hourlyRefreshProcessor(job: Job) {
             processingStarted: new Date().toISOString()
         });
 
-        // Build query parameters for API call
         const queryParams = new URLSearchParams();
-        
-        // Include all relevant context in URL parameters
         if (gameweek) queryParams.append('gameweek', gameweek.toString());
         if (refreshType) queryParams.append('type', refreshType);
         if (triggeredBy) queryParams.append('source', triggeredBy);
         if (isMatchDay) queryParams.append('matchDay', isMatchDay.toString());
-        queryParams.append('family', '0'); // Keep for compatibility
+        queryParams.append('family', '0');
         
-        // Build the API endpoint URL
         const apiEndpoint = `${config.nextApp.url}/api/cron/sync-fpl/hourly?${queryParams}`;
 
         console.log(`[API-CALL] Calling hourly refresh endpoint at ${apiEndpoint}`);
         
-        // Make the API call with complete job data in body
         const response = await fetch(apiEndpoint, {
             method: 'POST',
             headers: {
@@ -50,7 +53,6 @@ export async function hourlyRefreshProcessor(job: Job) {
                 'X-Job-ID': (job.id ?? 'unknown').toString(),
                 'X-Queue-Name': queueName
             },
-            // Include complete job data in request body
             body: JSON.stringify({
                 jobId: job.id,
                 refreshType,
@@ -69,7 +71,6 @@ export async function hourlyRefreshProcessor(job: Job) {
 
         const result = await response.json();
         
-        // Create enhanced result object with job context
         const enhancedResult = {
             ...result,
             jobContext: {
@@ -88,13 +89,11 @@ export async function hourlyRefreshProcessor(job: Job) {
             }
         };
         
-        // Enhanced structured logging of result
         console.log(`[JOB-COMPLETE] ${queueName} job ${job.id} completed:`, enhancedResult);
-
         return enhancedResult;
+
     } catch (error) {
-        // Enhanced error logging
-        console.error(`[JOB-ERROR] Error in ${job.data.queueName || 'hourly-refresh'} processor for job ${job.id}:`, {
+        console.error(`[JOB-ERROR] Error in ${job.data.queueName || job.name || 'hourly-refresh'} processor for job ${job.id}:`, {
             error: error instanceof Error ? error.message : 'Unknown error',
             jobData: job.data,
             timestamp: new Date().toISOString()

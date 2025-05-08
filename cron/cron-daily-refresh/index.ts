@@ -12,7 +12,6 @@ console.log(`[CRON-START] Starting FPL daily refresh scheduler at ${new Date().t
     // Enhanced job data without family:0
     const result = await addJobToQueue('daily-refresh', {
       triggeredBy: 'daily-cron-schedule',
-      refreshType: 'full'
     });
     
     console.log('[CRON-JOB] Daily refresh job added to queue:', result);
