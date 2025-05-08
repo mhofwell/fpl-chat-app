@@ -7,43 +7,44 @@ export async function scheduleUpdateProcessor(job: Job) {
     try {
         const originalJobData = { ...job.data };
 
-        console.log(`[JOB-INFO] Job ${job.id} in ${job.name}. Fetching full context from provider...`);
+        console.log(`[JOB-INFO] Job ${job.id} in ${job.name} received with data:`, originalJobData);
+
         const freshContext = await getJobContext(job.name, originalJobData.triggeredBy || 'system_processor_default');
         
         const timestamp = originalJobData.timestamp || freshContext.timestamp;
         const triggeredBy = originalJobData.triggeredBy || freshContext.triggeredBy;
         const queueName = job.name;
 
-        // schedule-update might not use gameweek or isMatchDay as primary inputs for its core task,
-        // but they are good to have for consistent logging and context.
         const gameweek = (originalJobData.gameweek !== undefined && originalJobData.gameweek !== null)
                          ? originalJobData.gameweek
                          : freshContext.gameweek;
         const isMatchDay = (originalJobData.isMatchDay !== undefined)
                            ? originalJobData.isMatchDay
                            : freshContext.isMatchDay;
-        
-        const refreshType = freshContext.refreshType; // Should be 'schedule'
-        const lastRefreshTime = freshContext.lastRefreshTime;
+
+        const windowsToSchedule = originalJobData.windows;
+
+        if (!Array.isArray(windowsToSchedule) || windowsToSchedule.length === 0) {
+            console.error(`[JOB-ERROR] Job ${job.id} (${job.name}) is missing 'windows' data in its payload, or 'windows' is empty. This data is now expected from the cron-scheduler-manager.`);
+            throw new Error("Job data from cron-scheduler-manager must contain a non-empty 'windows' array.");
+        }
 
         console.log(`[JOB-START] Processing ${queueName} job ${job.id}`, {
-            refreshType,
-            gameweek, // For logging context
-            lastRefreshTime,
+            gameweek, 
             triggeredBy,
-            isMatchDay, // For logging context
+            isMatchDay, 
             jobTimestamp: new Date(timestamp).toISOString(),
-            processingStarted: new Date().toISOString()
+            processingStarted: new Date().toISOString(),
+            numberOfWindows: windowsToSchedule.length
         });
 
         const queryParams = new URLSearchParams();
-        // Schedule update might not need many query params, but include for consistency if API expects them
-        if (refreshType) queryParams.append('type', refreshType); 
+        if (freshContext.refreshType) queryParams.append('type', freshContext.refreshType); 
         if (triggeredBy) queryParams.append('source', triggeredBy);
         
         const apiEndpoint = `${config.nextApp.url}/api/cron/schedule/update?${queryParams}`;
 
-        console.log(`[API-CALL] Calling schedule update endpoint at ${apiEndpoint}`);
+        console.log(`[API-CALL] Calling schedule update endpoint at ${apiEndpoint} with ${windowsToSchedule.length} windows.`);
         
         const response = await fetch(apiEndpoint, {
             method: 'POST',
@@ -53,28 +54,31 @@ export async function scheduleUpdateProcessor(job: Job) {
                 'X-Job-ID': (job.id ?? 'unknown').toString(),
                 'X-Queue-Name': queueName
             },
-            body: JSON.stringify({ // Body might be simpler for schedule update
-                jobId: job.id,
-                refreshType,
-                triggeredBy,
-                timestamp,
-                processingStarted: Date.now()
+            body: JSON.stringify({ 
+                windows: windowsToSchedule 
             })
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            let errorBody = 'Could not retrieve error body';
+            try {
+                errorBody = await response.text(); 
+            } catch (e) {
+                console.error(`[API-ERROR-BODY] Failed to parse error response body for job ${job.id}:`, e);
+            }
+            console.error(`[API-ERROR-DETAIL] Job ${job.id} received status ${response.status} from ${apiEndpoint}. Response: ${errorBody}`);
+            throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorBody}`);
         }
 
         const result = await response.json();
         
         const enhancedResult = {
-            ...result,
-            jobContext: { // Consistent job context structure
+            ...result, 
+            jobContext: { 
                 id: job.id,
-                refreshType,
+                refreshType: freshContext.refreshType,
                 gameweek,
-                lastRefreshTime,
+                lastRefreshTime: freshContext.lastRefreshTime,
                 triggeredBy,
                 isMatchDay,
                 queueName
