@@ -1,24 +1,35 @@
-/* Base Styles */
+/* Base Styles - Dark Mode */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   margin: 0;
   padding: 20px;
-  background-color: #f8f9fa;
-  color: #333;
+  background-color: #121212; /* Dark background for the page */
+  color: #e0e0e0; /* Light grey for general text */
 }
 
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
-  background-color: white;
-  border-radius: 5px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: #1e1e1e; /* Slightly lighter dark for main content area */
+  border-radius: 8px; /* Slightly more pronounced radius can look good in dark mode */
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* Adjusted shadow for dark bg */
+  border: 1px solid #333; /* Optional: subtle border for the container */
 }
 
 h1, h2 {
-  color: #0a58ca;
+  color: #6ca0fc; /* A lighter, more vibrant blue for headings */
   margin-bottom: 20px;
+}
+
+/* Links - ensure they are visible */
+a {
+  color: #6ca0fc; /* Match heading blue or use another light color */
+  text-decoration: none; /* Keep if you prefer no underlines */
+}
+a:hover {
+  color: #8cb9fd;
+  text-decoration: underline; /* Optional: underline on hover */
 }
 
 /* Dashboard Overview Page */
@@ -29,22 +40,23 @@ h1, h2 {
 }
 
 .queue-card {
-  border: 1px solid #ddd;
+  background-color: #2a2a2a; /* Darker card background */
+  border: 1px solid #444; /* Lighter border for cards */
   border-radius: 5px;
   padding: 15px;
-  transition: transform 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .queue-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.25); /* Enhanced shadow for dark */
 }
 
 .queue-name {
   font-size: 18px;
   font-weight: bold;
   margin-bottom: 10px;
-  color: #0a58ca;
+  color: #79b0ff; /* Light blue for queue names */
 }
 
 .job-counts {
@@ -53,6 +65,7 @@ h1, h2 {
   gap: 10px;
 }
 
+/* Count Item Badges - Adjusting for dark mode */
 .count-item {
   padding: 5px 10px;
   border-radius: 15px;
@@ -60,26 +73,32 @@ h1, h2 {
   font-weight: 500;
 }
 
-.active { background-color: #cfe2ff; color: #0a58ca; }
-.waiting { background-color: #fff3cd; color: #856404; }
-.completed { background-color: #d1e7dd; color: #105c38; }
-.failed { background-color: #f8d7da; color: #842029; }
-.delayed { background-color: #e2e3e5; color: #383d41; }
+/* Re-theme badges for dark mode. 
+   The original .active, .waiting etc. global classes need to be specific or overridden.
+   Assuming these are specific enough or the previous definitions will be removed.
+*/
+.count-item.active, .status-badge.active { background-color: #0d6efd; color: #ffffff; } /* Original Bootstrap blue for active */
+.count-item.waiting, .status-badge.waiting { background-color: #ffc107; color: #121212; } /* Amber/Yellow for waiting, dark text */
+.count-item.completed, .status-badge.completed { background-color: #198754; color: #ffffff; } /* Green for completed */
+.count-item.failed, .status-badge.failed { background-color: #dc3545; color: #ffffff; } /* Red for failed */
+.count-item.delayed, .status-badge.delayed { background-color: #6c757d; color: #ffffff; } /* Grey for delayed */
+.status-badge.stalled { background-color: #fd7e14; color: #ffffff; } /* Orange for stalled */
 
 .btn {
   display: inline-block;
   padding: 8px 15px;
   margin-top: 15px;
-  background-color: #0a58ca;
+  background-color: #0d6efd; /* Standard blue for buttons */
   color: white;
   text-decoration: none;
   border-radius: 4px;
   font-size: 14px;
+  border: none; /* Remove default browser borders if any */
   transition: background-color 0.2s;
 }
 
 .btn:hover {
-  background-color: #084298;
+  background-color: #0b5ed7; /* Darker blue on hover */
 }
 
 /* Queue Details Page */
@@ -93,7 +112,7 @@ h1, h2 {
 .back-btn {
   display: inline-block;
   padding: 8px 15px;
-  background-color: #6c757d;
+  background-color: #495057; /* Darker grey for back button */
   color: white;
   text-decoration: none;
   border-radius: 4px;
@@ -101,37 +120,31 @@ h1, h2 {
 }
 
 .back-btn:hover {
-  background-color: #5a6268;
+  background-color: #343a40;
 }
 
+/* Stat cards - if you still use them, they'll need re-theming */
 .stats-container {
   display: flex;
   gap: 15px;
   margin-bottom: 30px;
 }
-
-.stat-card {
+.stat-card { /* Example, adjust as needed */
   flex: 1;
   padding: 15px;
   border-radius: 5px;
   text-align: center;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
 }
-
-.stat-label {
-  font-size: 14px;
-  margin-bottom: 5px;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-.active-stat { background-color: #cfe2ff; color: #0a58ca; }
-.waiting-stat { background-color: #fff3cd; color: #856404; }
-.completed-stat { background-color: #d1e7dd; color: #105c38; }
-.failed-stat { background-color: #f8d7da; color: #842029; }
-.delayed-stat { background-color: #e2e3e5; color: #383d41; }
+.stat-label { font-size: 14px; margin-bottom: 5px; color: #adb5bd; }
+.stat-value { font-size: 24px; font-weight: bold; color: #f8f9fa; }
+/* Specific stat card colors (using similar logic as badges) */
+.active-stat { background-color: #0d6efd; color: #ffffff; border-color: #0a58ca;}
+.waiting-stat { background-color: #ffc107; color: #121212; border-color: #cc9a06;}
+.completed-stat { background-color: #198754; color: #ffffff; border-color: #13653f;}
+.failed-stat { background-color: #dc3545; color: #ffffff; border-color: #b02a37;}
+.delayed-stat { background-color: #6c757d; color: #ffffff; border-color: #565e64;}
 
 .job-section {
   margin-bottom: 30px;
@@ -143,20 +156,22 @@ h1, h2 {
 
 .tab-buttons {
   display: flex;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid #444; /* Darker border for tab separator */
 }
 
 .tab-btn {
   padding: 10px 20px;
   border: none;
   background: none;
+  color: #adb5bd; /* Lighter text for inactive tabs */
   cursor: pointer;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .tab-btn.active {
+  color: #79b0ff; /* Active tab text color */
   opacity: 1;
-  border-bottom: 2px solid #0a58ca;
+  border-bottom: 2px solid #0d6efd; /* Blue underline for active tab */
 }
 
 .tab-content {
@@ -164,24 +179,38 @@ h1, h2 {
   padding: 20px 0;
 }
 
-.tab-content.active {
+.tab-content.active { /* This selector was duplicated, ensure it's defined once */
   display: block;
 }
 
-/* Tables */
+/* Tables - Dark Mode */
 table {
   width: 100%;
   border-collapse: collapse;
+  color: #e0e0e0; /* Ensure table text is light */
 }
 
 table th, table td {
   padding: 12px 15px;
   text-align: left;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid #3a3a3a; /* Lighter border for table rows */
 }
 
 table th {
-  background-color: #f8f9fa;
+  background-color: #2c2c2c; /* Dark background for table headers */
+  color: #f0f0f0; /* Light text for table headers */
+  font-weight: 600;
+}
+
+/* Alternating row colors for better readability (optional) */
+table tbody tr:nth-child(odd) td {
+  background-color: #252525; /* Slightly different dark for odd rows */
+}
+table tbody tr:nth-child(even) td {
+  background-color: #1e1e1e; /* Base dark for even rows */
+}
+table tbody tr:hover td {
+  background-color: #333333; /* Hover effect for table rows */
 }
 
 .actions {
@@ -189,30 +218,37 @@ table th {
   gap: 5px;
 }
 
+/* Action buttons in tables */
 .action-btn {
   padding: 5px 10px;
   border: none;
   border-radius: 3px;
   cursor: pointer;
   font-size: 12px;
+  color: white; /* Default text color */
 }
 
 .retry-btn {
-  background-color: #0a58ca;
-  color: white;
+  background-color: #0d6efd; /* Blue for retry */
+}
+.retry-btn:hover {
+  background-color: #0b5ed7;
 }
 
 .remove-btn {
-  background-color: #dc3545;
-  color: white;
+  background-color: #dc3545; /* Red for remove */
+}
+.remove-btn:hover {
+  background-color: #b02a37;
 }
 
-/* Add Job Section */
+/* Add Job Section - Dark Mode */
 .add-job-section {
   margin-top: 30px;
   padding: 20px;
-  background-color: #f8f9fa;
+  background-color: #2a2a2a; /* Dark background for this section */
   border-radius: 5px;
+  border: 1px solid #444;
 }
 
 .form-group {
@@ -223,20 +259,30 @@ label {
   display: block;
   margin-bottom: 5px;
   font-weight: 500;
+  color: #c0c0c0; /* Light label text */
 }
 
+input[type="text"], /* Added for potential text inputs */
+input[type="number"], /* Added for potential number inputs */
 textarea {
-  width: 100%;
+  width: 100%; /* Consider box-sizing: border-box; globally if not already set */
   padding: 10px;
-  border: 1px solid #ced4da;
+  border: 1px solid #555; /* Darker border for inputs */
   border-radius: 4px;
-  font-family: monospace;
-  min-height: 100px;
+  background-color: #333; /* Dark input background */
+  color: #e0e0e0; /* Light text in inputs */
+  font-family: monospace; /* Keep for textarea */
+  min-height: 100px; /* For textarea */
+}
+input[type="text"]::placeholder, /* Placeholder text styling */
+input[type="number"]::placeholder,
+textarea::placeholder {
+  color: #888;
 }
 
 .submit-btn {
   padding: 10px 20px;
-  background-color: #0a58ca;
+  background-color: #198754; /* Green for submit, or your primary blue */
   color: white;
   border: none;
   border-radius: 4px;
@@ -244,42 +290,78 @@ textarea {
 }
 
 .submit-btn:hover {
-  background-color: #084298;
+  background-color: #13653f; /* Darker green on hover */
 }
 
 .empty-state {
-  padding: 30px;
+  padding: 20px;
   text-align: center;
-  color: #6c757d;
+  color: #777; /* Muted text for empty states */
+  background-color: #252525;
+  border-radius: 4px;
+  border: 1px dashed #444;
 }
 
-/* Error Page */
+/* Error Page Specifics (if you have an error.ejs with these classes) */
 .error-container {
-  max-width: 800px;
-  margin: 40px auto;
-  padding: 30px;
-  background-color: white;
-  border-radius: 5px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   text-align: center;
+  padding: 40px 20px;
 }
 
 .error-title {
-  color: #dc3545;
-  margin-bottom: 20px;
+  font-size: 2em; /* Adjust as needed */
+  color: #ff6b6b; /* A distinct error color */
+  margin-bottom: 10px;
 }
 
 .error-message {
-  font-size: 18px;
-  margin-bottom: 30px;
+  font-size: 1.2em;
+  color: #f0f0f0;
 }
 
-.status-badge.stalled {
-    background-color: #ff9800;
-    color: white;
+/* General Status Badges (if used outside .count-item, ensure these are styled) */
+.status-badge {
+    padding: 0.35em 0.65em;
+    font-size: .75em;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: .25rem;
+}
+/* Specific badge colors for dark mode are defined above with .count-item */
+
+/* Ensure preformatted text (like JSON output) is readable */
+pre {
+  background-color: #222; /* Dark background for pre */
+  color: #d0d0d0; /* Light text for pre */
+  padding: 15px;
+  border-radius: 4px;
+  border: 1px solid #333;
+  overflow-x: auto; /* Allow horizontal scrolling for long lines */
+  white-space: pre-wrap; /* Wrap lines if possible, but still allow scroll */
+  word-wrap: break-word;
 }
 
-.status-badge.delayed {
-    background-color: #3f51b5;
-    color: white;
+/* Final specific overrides for job card elements for better visibility if needed */
+.job-card .job-meta .badge { /* Ensure badges within job cards also use new theme */
+    /* The general badge styling above should cover this, but you can add specifics if needed */
+    /* e.g., slightly different margin or padding if they look cramped */
+}
+
+.job-card .job-timestamp {
+    color: #aaa; /* Lighter grey for less prominent timestamps if needed */
+    font-size: 0.9em;
+}
+
+.job-card .job-error {
+    color: #ff8a8a; /* Lighter red for error text in cards */
+    background-color: rgba(255, 0, 0, 0.1); /* Subtle red background */
+    border: 1px solid #5c0000;
+    padding: 8px;
+    border-radius: 3px;
+    margin-top: 8px;
+    font-size: 0.9em;
 }
