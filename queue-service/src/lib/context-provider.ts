@@ -22,24 +22,31 @@ const REFRESH_TYPES = {
 // Get current gameweek from database with error handling
 async function getCurrentGameweek() {
   try {
+    const now = new Date().toISOString();
     const { data, error } = await supabase
-      .from('system_meta')
-      .select('value')
-      .eq('key', 'current_status')
-      .single();
-    
+      .from('gameweeks')
+      .select('id')
+      .lt('deadline_time', now) // Find gameweeks whose deadline has passed
+      .order('deadline_time', { ascending: false }) // Get the most recent one
+      .limit(1)
+      .maybeSingle(); // Handles no rows found by returning data as null
+
     if (error) {
-      // Check for the specific "no rows" error
-      if (error.code === 'PGRST116') {
-        console.info('No current gameweek found in system_meta table. This is expected for a fresh setup.');
-        return null;
-      }
-      throw error;
+      // If error is present here, it's an actual database error,
+      // as maybeSingle() handles "no rows" by returning data: null.
+      console.error('Error fetching current gameweek from gameweeks table:', error);
+      throw error; // Re-throw to be caught by the outer catch block
     }
-    
-    return data?.value ? parseInt(data.value, 10) : null;
+
+    if (!data) {
+      console.info('No gameweek found with a deadline_time in the past. This could be pre-season or a fresh setup.');
+      return null;
+    }
+
+    return data.id; // data.id is already an integer
   } catch (error) {
-    console.error('Error fetching current gameweek:', error);
+    console.error('Failed to determine current gameweek:', error);
+    // We're in the off-season, so return null
     return null;
   }
 }
