@@ -7,6 +7,19 @@
         <link rel="stylesheet" href="/styles.css" />
     </head>
     <body>
+        <%
+            function formatTimestampDual(timestamp) {
+                if (!timestamp) return 'N/A';
+                const date = new Date(timestamp);
+                const options = {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+                };
+                const utcString = date.toLocaleString('en-US', {...options, timeZone: 'UTC', timeZoneName: 'shortOffset'});
+                const pdtString = date.toLocaleString('en-US', {...options, timeZone: 'America/Los_Angeles', timeZoneName: 'shortOffset'});
+                return `${utcString}<br>${pdtString}`;
+            }
+        %>
         <div class="container">
             <div class="header">
                 <h1>Queue: <%= queueName %></h1>
@@ -51,10 +64,7 @@
                             <tr>
                                 <td><%= job.id %></td>
                                 <td><%= job.name %></td>
-                                <td>
-                                    <%= new Date(job.timestamp).toLocaleString()
-                                    %>
-                                </td>
+                                <td><%- formatTimestampDual(job.timestamp) %></td>
                                 <td>
                                     <div class="job-card">
                                         <h3>Job #<%= job.id %></h3>
@@ -73,7 +83,7 @@
                                             <% } %>
                                         </div>
                                         <div class="job-timestamp">
-                                            Added: <%= new Date(job.timestamp).toLocaleString() %>
+                                            Added: <%- formatTimestampDual(job.timestamp) %>
                                         </div>
                                         <% if(job.failedReason) { %>
                                             <div class="job-error">
@@ -114,10 +124,7 @@
                                         >Completed</span
                                     >
                                 </td>
-                                <td>
-                                    <%= new
-                                    Date(job.finishedOn).toLocaleString() %>
-                                </td>
+                                <td><%- formatTimestampDual(job.finishedOn) %></td>
                                 <td>
                                     <%= Math.round((job.finishedOn -
                                     job.processedOn) / 1000) %> sec
@@ -158,10 +165,7 @@
                                         >Failed</span
                                     >
                                 </td>
-                                <td>
-                                    <%= new
-                                    Date(job.finishedOn).toLocaleString() %>
-                                </td>
+                                <td><%- formatTimestampDual(job.finishedOn) %></td>
                                 <td><pre><%= job.failedReason %></pre></td>
                             </tr>
                             <% }); %>
@@ -194,7 +198,7 @@
                                 <td><%= job.id %></td>
                                 <td><%= job.name %></td>
                                 <td><span class="status-badge stalled">Stalled</span></td>
-                                <td><%= new Date(job.timestamp).toLocaleString() %></td>
+                                <td><%- formatTimestampDual(job.timestamp) %></td>
                                 <td><pre><%= JSON.stringify(job.data, null, 2) %></pre></td>
                                 <td>
                                     <button class="retry-job" data-job-id="<%= job.id %>" data-queue="<%= queueName %>">Retry</button>
@@ -227,7 +231,7 @@
                                 <td><%= job.id %></td>
                                 <td><%= job.name %></td>
                                 <td><span class="status-badge delayed">Delayed</span></td>
-                                <td><%= new Date(job.timestamp + (job.opts.delay || 0)).toLocaleString() %></td>
+                                <td><%- formatTimestampDual(job.timestamp + (job.opts.delay || 0)) %></td>
                                 <td><pre><%= JSON.stringify(job.data, null, 2) %></pre></td>
                             </tr>
                             <% }); %>
