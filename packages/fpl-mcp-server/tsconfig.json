@@ -1,0 +1,23 @@
+{
+ "compilerOptions": {
+    "target": "es2016",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    // "rootDir": "./src", // Remove this line
+    "baseUrl": ".", // Paths will be relative to the package root (packages/fpl-mcp-server/)
+    "paths": {
+      "@/*": ["src/*"], // Alias for this package's source files
+      "@types/*": ["../../types/*"] // Alias for shared types (PROJECT_ROOT/types/)
+    },
+    "rootDirs": [ // Specify multiple roots
+      "src", // Files from here will be output to 'dist/'
+      "../../types" // Files from here are available for type resolution
+    ]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}

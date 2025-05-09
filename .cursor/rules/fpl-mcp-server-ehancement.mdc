@@ -1,0 +1,179 @@
+---
+description: This rule outlines the guidelines and steps for enhancing the FPL MCP server tools to align with the `claude-tool-enhancement-plan`. The primary goal is to leverage Claude's native entity extraction by providing tools that accept flexible inputs and return rich, structured text responses.
+globs: 
+alwaysApply: false
+---
+# FPL MCP Server Tool Enhancement Rule
+
+This rule outlines the guidelines and steps for enhancing the FPL MCP server tools to align with the `claude-tool-enhancement-plan`. The primary goal is to leverage Claude's native entity extraction by providing tools that accept flexible inputs and return rich, structured text responses.
+
+## I. Guiding Principles (Derived from `claude-tool-enhancement-plan`)
+
+1.  **Claude-Led Entity Extraction**: Design tools assuming Claude will handle most entity extraction from user queries. Tools should be robust to variations in entity references.
+2.  **Flexible Tool Inputs**:
+    *   Update Zod schemas to accept more descriptive and optional parameters (e.g., names, partial matches, descriptive queries, team/position filters) rather than just IDs.
+    *   Refer to `claude-tool-enhancement-plan` for examples like `getPlayer`'s `playerQuery`, `teamId`, `position` parameters.
+3.  **Structured Text Responses**:
+    *   All tools MUST return content as `[{ type: 'text', text: '...' }]`.
+    *   The `text` payload MUST follow a consistent, predictable format with clear section headers (e.g., `PLAYER_INFO:`, `TEAM_INFO:`, `KEY_STATS:`, `UPCOMING_FIXTURES:`, `STRATEGIC_NOTES:`, `DISAMBIGUATION_REQUIRED:`, `ERROR:`, `SUGGESTIONS:`).
+    *   All responses MUST include a `Data timestamp: YYYY-MM-DDTHH:mm:ssZ` at the end of the primary information block.
+    *   Provide context annotations for numeric values where appropriate (e.g., "8 (league-leading)").
+    *   Refer to the detailed response structure examples in `claude-tool-enhancement-plan`.
+4.  **Robust Error and Disambiguation Handling**:
+    *   **Disambiguation**: When a query can match multiple entities, tools should return a `DISAMBIGUATION_REQUIRED:` section listing potential candidates with enough detail for the user (or Claude) to clarify. Include confidence scores if feasible.
+    *   **Errors**: Return an `ERROR:` section with a `Type:` (e.g., `NOT_FOUND`, `API_ERROR`, `INVALID_INPUT`) and a `Message:`. Include a `SUGGESTIONS:` section with actionable advice if possible.
+5.  **Data Freshness**: All tool responses must clearly indicate the timestamp of the data used.
+6.  **Caching**: Continue to use Redis for caching FPL data. Implement tiered caching if necessary, based on data volatility, and indicate when cached vs. fresh data is used if a significant difference exists.
+
+## II. Tool-Specific Enhancement Plan
+
+**Location of tools**: `fpl-mcp-server/src/tools/`
+**Tool registration**: `fpl-mcp-server/src/tools/index.ts`
+**FPL-specific tool logic**: `fpl-mcp-server/src/tools/fpl/`
+
+### A. Existing Tool Modifications
+
+For each existing tool (`get-current-gameweek`, `get-team`, `get-player`, `get-gameweek-fixtures`):
+
+1.  **Update Zod Schema (`tools/index.ts`):**
+    *   Modify the schema to accept more flexible parameters as outlined in the `claude-tool-enhancement-plan`.
+    *   Example for `get-player`:
+        ```typescript
+        // In tools/index.ts, update the registration for get-player
+        server.tool('get-player', {
+            playerQuery: z.string().optional().describe("Player name, FPL ID, or descriptive query. Supports partial matches."),
+            teamId: z.number().optional().describe("Filter by team ID (optional)"),
+            teamName: z.string().optional().describe("Filter by team name (optional, fuzzy match)"),
+            position: z.string().optional().describe("Filter by position (GKP, DEF, MID, FWD) (optional)"),
+            // includeStats: z.boolean().optional().default(true).describe("Include detailed player statistics"), // Already somewhat handled by structured text
+            // includeFixtures: z.boolean().optional().default(false).describe("Include upcoming fixtures information"), // Already somewhat handled by structured text
+            includeRawData: z.boolean().optional().default(false).describe("Include raw JSON data alongside structured text (for debugging/specific needs)")
+        }, getPlayer);
+        ```
+    *   Ensure handler function signatures in the respective tool files (e.g., `tools/fpl/player.ts`) are updated to match the new Zod schema.
+
+2.  **Refactor Tool Logic (in `tools/fpl/*.ts` files):**
+    *   Enhance entity lookup logic to use new flexible input parameters (e.g., using `playerQuery` for fuzzy name, ID, or description matching).
+    *   Prioritize exact ID matches, then exact name matches, then fuzzy name matches, then combinations (e.g., player name + team name).
+
+3.  **Implement Structured Text Response Formatter:**
+    *   Create a dedicated function or use a template literal approach within each tool to generate the structured text response.
+    *   **Example for `getPlayer` (refer to `claude-tool-enhancement-plan` Phase 2 & Example Revised Tool Implementation):**
+        ```
+        PLAYER_INFO:
+        Name: Mohamed Salah (Mohamed Salah Hamed Mahrous Ghaly)
+        Team: Liverpool
+        Position: MIDFielder
+        FPL ID: <player.id> // Add FPL ID
+
+        KEY_STATS: // Fetch relevant stats from player object and playerDetails
+        - Price: £12.7m
+        - Selected by: 48.9%
+        - Form: 9.2 (highest in league) // Add contextual annotation
+        - Total Points: 220 (2nd highest overall)
+        - Goals: ...
+        - Assists: ...
+        - Bonus Points: ...
+        - Points Per Game: ...
+        - ICT Index: ... // Add other relevant stats
+
+        UPCOMING_FIXTURES: // If applicable and data available
+        Next 3: BRE (H) [Diff: X], MCI (A) [Diff: Y], FUL (H) [Diff: Z] - Overall Difficulty: Medium // Include fixture difficulty if possible
+
+        STRATEGIC_NOTES: // Generate based on player data, team form, etc.
+        - Consistent high-performer
+        - Main penalty taker for Liverpool (if true and data available)
+        - Often captained
+
+        Data timestamp: 2025-05-09T15:30:00Z
+        ```
+    *   Ensure the `isError` flag is still used appropriately with the structured error response.
+
+4.  **Implement Disambiguation Logic:**
+    *   If multiple players/teams match a query, return the `DISAMBIGUATION_REQUIRED:` structure.
+    *   Example for `getPlayer` if `playerQuery` matches multiple "Ferguson"s.
+
+5.  **Enhance Error Handling:**
+    *   Return structured errors as described in Guiding Principle I.4.
+
+### B. New Tool Implementation
+
+For each new tool (`searchPlayers`, `searchFixtures`, `compareEntities`):
+
+1.  **Define Zod Schema (`tools/index.ts`):**
+    *   Create a Zod schema for the tool's input parameters based on `claude-tool-enhancement-plan`.
+    *   Example for `searchPlayers`:
+        ```typescript
+        // In tools/index.ts
+        server.tool('search-players', {
+            query: z.string().optional().describe("General search query for player name or attributes"),
+            sortBy: z.string().optional().describe("Stat to sort by (e.g., 'form', 'price', 'total_points', 'bonus', 'price_rise')"),
+            formPeriod: z.string().optional().describe("Period for form calculation (e.g., 'last 5', 'season', 'GW5-GW10')"),
+            limit: z.number().optional().default(10).describe("Number of results to return"),
+            position: z.string().optional().describe("Filter by position (GKP, DEF, MID, FWD)"),
+            teamId: z.number().optional().describe("Filter by team ID"),
+            teamName: z.string().optional().describe("Filter by team name (fuzzy match)"),
+            minPrice: z.number().optional(),
+            maxPrice: z.number().optional(),
+            // Add other relevant filters
+        }, searchPlayers); // searchPlayers would be a new handler function
+        ```
+
+2.  **Create Handler Function (in `tools/fpl/*.ts`):**
+    *   Create a new file (e.g., `tools/fpl/search.ts` or individual files like `tools/fpl/searchPlayers.ts`).
+    *   Implement the core logic for fetching, filtering, and sorting data based on the input parameters. This will involve querying the Redis cache extensively.
+    *   Utilize data from `fpl:players`, `fpl:teams`, and potentially other relevant Redis keys.
+
+3.  **Implement Structured Text Response Formatter:**
+    *   Format the results according to the `claude-tool-enhancement-plan` examples (e.g., `SEARCH_RESULTS:` block for `searchPlayers`).
+    *   Each item in the search results should follow the relevant structured format (e.g., a summarized player structure).
+
+4.  **Implement Disambiguation and Error Handling:**
+    *   As per Guiding Principle I.4.
+
+### C. Specific Tool Notes from `claude-tool-enhancement-plan`
+
+*   **`getPlayer`**:
+    *   Input: `playerQuery` (name, ID, description), `teamId`, `teamName`, `position`.
+    *   Output: `PLAYER_INFO`, `KEY_STATS`, `STRATEGIC_NOTES`, `UPCOMING_FIXTURES`.
+*   **`searchPlayers`**:
+    *   Input: `sortBy` (form, price_rise, bonus, etc.), `formPeriod`, `limit`, `position`, `query`.
+    *   Output: `SEARCH_RESULTS` list, each player having a summary structure.
+*   **`getTeam`**: (Existing, to be enhanced)
+    *   Input: `teamQuery` (name, ID), `period` (season, last X), `includeForm`, `includeFixtures`.
+    *   Output: `TEAM_INFO`, `FORM_SUMMARY`, `RECENT_RESULTS`, `KEY_STATS`, `KEY_PLAYERS`, `UPCOMING_FIXTURES`.
+*   **`getGameweek` / `get-current-gameweek` / `get-gameweek-fixtures`**: (Existing, to be enhanced/consolidated if sensible)
+    *   Input: `gameweekId`, `type` ("next", "current", "last"), `includeFixtures`.
+    *   Output: `GAMEWEEK_INFO`, `FIXTURES`, `KEY_MATCHES`.
+*   **`searchFixtures`**: (New)
+    *   Input: `teamQuery`, `gameweekId`, `dateRange`, `difficulty`.
+    *   Output: `FIXTURE_SEARCH_RESULTS` list.
+*   **`compareEntities`**: (New)
+    *   Input: `entity1Query`, `entity2Query`, `entityType` ("player", "team").
+    *   Output: `PLAYER_COMPARISON` or `TEAM_COMPARISON` (or `HEAD_TO_HEAD_COMPARISON`). Must handle disambiguation for both entities.
+
+## III. Data Requirements (Considerations for `lib/fpl-api` or data fetching scripts)
+
+The enhancement plan implies the need for certain data which might not be readily available or might need pre-processing/calculation during data ingestion (from FPL API to Redis):
+
+*   **Historical price data**: For `searchPlayers` sortBy `price_rise`.
+*   **Form calculation for different periods**: For `searchPlayers` with `formPeriod`.
+*   **Head-to-head match history**: For `compareEntities`.
+*   **Fixture difficulty**: Potentially pre-calculated or fetched.
+*   **Contextual annotations**: E.g., "league-leading". This might require comparing a player's stat against all others in their position or league-wide during tool execution or data pre-processing.
+
+These data aspects might require updates to how data is fetched from the FPL API and stored in Redis, potentially impacting `lib/fpl-api` and any data synchronization scripts. This rule focuses on the MCP tool implementation, but these data dependencies are critical.
+
+## IV. Implementation Priorities (from `claude-tool-enhancement-plan`)
+
+1.  **First**: Define and implement the **Structured Response Format** across existing and new tools.
+2.  **Second**: Build/Update **Robust Tool Interfaces** (Zod schemas and flexible input handling).
+3.  **Third**: Develop **Core Search and Comparison Tools** (`searchPlayers`, `compareEntities`, `searchFixtures`).
+4.  **Fourth**: Add **Data Freshness Indicators** to all responses.
+
+## V. Code Style and Structure
+
+*   Maintain clear separation of concerns. Tool logic in `tools/fpl/*.ts`.
+*   Helper functions (e.g., for formatting, context generation, advanced fuzzy matching) can be placed in `src/lib/` or within the tool files if specific.
+*   Ensure all new code is well-typed with TypeScript.
+*   Write unit tests for new tool logic and complex matching/filtering if possible.
