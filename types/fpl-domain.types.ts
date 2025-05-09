@@ -1,5 +1,7 @@
 // shared-types/fpl-domain.types.ts
 
+import { FplFixtureStat } from './fpl-api.types'; // Or the correct path to your fpl-api.types
+
 // Basic FPL data types
 export interface Team {
     id: number;
@@ -43,9 +45,12 @@ export interface Player {
     // Cost
     now_cost?: number;
     cost_change_start?: number;
+    cost_change_event?: number;
+    cost_change_event_fall?: number;
+    cost_change_start_fall?: number;
 
     // Performance
-    form?: string;
+    form?: string; // Overall FPL form string
     points_per_game?: string;
     total_points?: number;
     minutes?: number;
@@ -63,7 +68,7 @@ export interface Player {
     bps?: number;
 
     // Status & Availability
-    status?: string; // 'a', 'd', 'i', 's', 'u'
+    status?: string; // 'a', 'd', 'i', 's', 'u', 'n'
     news?: string | null;
     news_added?: string | null;
     chance_of_playing_next_round?: number | null;
@@ -105,9 +110,11 @@ export interface Fixture {
     away_team_id: number; // Represents FplFixture.team_a
     kickoff_time: string | null;
     finished: boolean;
+    started: boolean;
     team_h_difficulty?: number;
     team_a_difficulty?: number;
     team_h_score?: number | null;
     team_a_score?: number | null;
+    stats?: FplFixtureStat[];
     last_updated?: string;
 }

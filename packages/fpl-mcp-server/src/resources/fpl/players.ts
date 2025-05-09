@@ -2,7 +2,6 @@
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import redis from '../../lib/redis/redis-client';
 import { Player, Team as FplTeamType } from '../../../../../types/fpl-domain.types';
-import { PlayerDetailResponse } from '../../../../../types/fpl-api.types';
 
 export const playersResource = {
     name: 'fpl-players',

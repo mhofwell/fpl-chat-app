@@ -1,4 +1,3 @@
-
 import { fplApi } from './client';
 import redis from '../redis/redis-client';
 import { Team, Player, Gameweek, Fixture } from '../../../../types/fpl-domain.types'; // Corrected path
@@ -30,6 +29,25 @@ export interface PlayerFilterOptions {
 export interface GameweekFixtures {
     gameweekId: number;
     fixtures: Fixture[];
+}
+
+/**
+ * Type for player details with team information
+ */
+export interface PlayerDetailWithTeam {
+    playerId: number;
+    playerName: string;
+    teamName: string;
+    details: PlayerDetailResponse;
+}
+
+/**
+ * Type for player gameweek history point
+ */
+export interface PlayerGameweekHistoryPoint {
+    gameweek: number;
+    points: number;
+    minutes: number;
 }
 
 /**
@@ -114,9 +132,6 @@ export const fplApiService = {
                             team_id: apiPlayer.team,
                             element_type: apiPlayer.element_type,
                             position: positionString,
-
-                            now_cost: apiPlayer.now_cost,
-                            cost_change_start: apiPlayer.cost_change_start,
                             
                             form: apiPlayer.form,
                             points_per_game: apiPlayer.points_per_game,
@@ -153,6 +168,12 @@ export const fplApiService = {
                             transfers_in: apiPlayer.transfers_in,
                             transfers_out: apiPlayer.transfers_out,
                             dreamteam_count: apiPlayer.dreamteam_count,
+
+                            now_cost: apiPlayer.now_cost,
+                            cost_change_start: apiPlayer.cost_change_start,
+                            cost_change_event: apiPlayer.cost_change_event, // Add this
+                            cost_change_event_fall: apiPlayer.cost_change_event_fall, // Add this
+                            cost_change_start_fall: apiPlayer.cost_change_start_fall, // Add this
                             
                             last_updated: new Date().toISOString(),
                         };
@@ -231,13 +252,10 @@ export const fplApiService = {
                     away_team_id: fixture.team_a,
                     kickoff_time: fixture.kickoff_time,
                     finished: fixture.finished,
-                    // Include scores for finished matches
-                    team_h_score: fixture.finished
-                        ? fixture.team_h_score
-                        : null,
-                    team_a_score: fixture.finished
-                        ? fixture.team_a_score
-                        : null,
+                    started: fixture.started,
+                    team_h_score: fixture.team_h_score,
+                    team_a_score: fixture.team_a_score,
+                    stats: fixture.stats,
                     last_updated: new Date().toISOString(),
                 }));
 
@@ -318,18 +336,19 @@ export const fplApiService = {
             if (
                 liveData &&
                 liveData.elements &&
-                liveData.elements[playerId.toString()]
+                Array.isArray(liveData.elements) 
             ) {
-                const playerData = liveData.elements[playerId.toString()];
-
-                // Cache the result
-                await redis.set(
-                    cacheKey,
-                    JSON.stringify(playerData),
-                    'EX',
-                    60 * 15
-                ); // 15 minutes
-                return playerData;
+                const playerData = liveData.elements.find(element => element.id === playerId);
+                if (playerData) {
+                    // Cache the result (playerData)
+                    await redis.set(
+                        cacheKey,
+                        JSON.stringify(playerData.stats),
+                        'EX',
+                        60 * 15 
+                    ); 
+                    return playerData.stats;
+                }
             }
         } catch (apiError) {
             console.error(`API error fetching live data:`, apiError);
@@ -682,8 +701,10 @@ export const fplApiService = {
                 away_team_id: fixture.team_a,
                 kickoff_time: fixture.kickoff_time,
                 finished: fixture.finished,
+                started: fixture.started,
                 team_h_score: fixture.team_h_score,
                 team_a_score: fixture.team_a_score,
+                stats: fixture.stats,
                 last_updated: new Date().toISOString(),
             }));
 

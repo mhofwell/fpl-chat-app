@@ -1,202 +1,188 @@
 // src/tools/fpl/gameweek.ts
 import redis from '../../lib/redis/redis-client';
-import { Gameweek, Fixture } from '../../../../../types/fpl-domain.types';
+import { Gameweek, Fixture, Team } from '../../../../../types/fpl-domain.types';
 
-/**
- * Get a specific gameweek by ID, current, next, or all gameweeks
- */
+// Helper for structured error response
+function createGameweekErrorResponse(message: string, type: string = 'GENERIC_ERROR', suggestions?: string[]) {
+    const dataTimestamp = new Date().toISOString();
+    let text = `ERROR:\nType: ${type}\nMessage: ${message}`;
+    if (suggestions && suggestions.length > 0) {
+        text += `\n\nSUGGESTIONS:\n- ${suggestions.join('\n- ')}`;
+    }
+    text += `\n\nData timestamp: ${dataTimestamp}`;
+    return {
+        content: [{ type: 'text' as const, text }],
+        isError: true,
+    };
+}
+
+interface GetGameweekParams {
+    gameweekId?: number;
+    type?: 'current' | 'next' | 'previous'; // Added 'previous' to align with plan
+    includeFixtures?: boolean;
+    includeRawData?: boolean;
+}
+
 export async function getGameweek(
-    { 
-        gameweekId, 
-        getCurrent = false, 
-        getNext = false,
-        includeFixtures = false,
-        includeRawData = false 
-    }: { 
-        gameweekId?: number; 
-        getCurrent?: boolean; 
-        getNext?: boolean;
-        includeFixtures?: boolean;
-        includeRawData?: boolean;
-    },
+    params: GetGameweekParams,
     _extra: any
 ) {
+    const {
+        gameweekId,
+        type,
+        includeFixtures = false,
+        includeRawData = false,
+    } = params;
+    const dataTimestamp = new Date().toISOString();
+
+    // Determine actual type if aliases are used (e.g. map getCurrent to type='current')
+    let effectiveType = type;
+    // For backward compatibility with potential direct calls if getCurrentGameweek uses this:
+    if ((params as any).getCurrent) effectiveType = 'current';
+    if ((params as any).getNext) effectiveType = 'next';
+
+
     try {
-        // Validate parameters
-        if (gameweekId && (getCurrent || getNext)) {
-            return {
-                content: [
-                    {
-                        type: 'text' as const,
-                        text: 'Please provide either gameweekId OR set getCurrent/getNext to true',
-                    },
-                ],
-                isError: true,
-            };
+        // Parameter validation (simplified for now, can be expanded in Zod schema later)
+        if (gameweekId && effectiveType) {
+            return createGameweekErrorResponse(
+                "Please provide either 'gameweekId' OR 'type', not both.",
+                'VALIDATION_ERROR',
+                ["Specify a gameweek by its ID, or use type: 'current', 'next', or 'previous'."]
+            );
+        }
+        if (!gameweekId && !effectiveType) {
+             return createGameweekErrorResponse(
+                "You must specify a gameweek, e.g., by ID or by type ('current', 'next', 'previous').",
+                'VALIDATION_ERROR',
+                ["Try 'type: \"current\"' to get the current gameweek."]);
         }
 
-        const cachedData = await redis.get('fpl:gameweeks');
-        if (!cachedData)
-            return {
-                content: [
-                    {
-                        type: 'text' as const,
-                        text: 'Gameweek data not found in cache',
-                    },
-                ],
-                isError: true,
-            };
+        const cachedGameweeks = await redis.get('fpl:gameweeks');
+        if (!cachedGameweeks) {
+            return createGameweekErrorResponse(
+                'Gameweek data not found in cache. FPL data might be updating.',
+                'CACHE_ERROR',
+                ['Please try again in a few moments.']
+            );
+        }
 
-        const gameweeks: Gameweek[] = JSON.parse(cachedData);
-        let gameweek: Gameweek | undefined;
-        
-        // Get specific gameweek based on parameters
+        const allGameweeks: Gameweek[] = JSON.parse(cachedGameweeks);
+        let targetGameweek: Gameweek | undefined;
+        let currentGameweekIndex = -1;
+
+        if (allGameweeks.length > 0) {
+             currentGameweekIndex = allGameweeks.findIndex(gw => gw.is_current);
+        }
+
+
         if (gameweekId) {
-            gameweek = gameweeks.find((gw) => gw.id === gameweekId);
-            if (!gameweek) {
-                return {
-                    content: [
-                        {
-                            type: 'text' as const,
-                            text: `Gameweek with ID ${gameweekId} not found`,
-                        },
-                    ],
-                    isError: true,
-                };
+            targetGameweek = allGameweeks.find((gw) => gw.id === gameweekId);
+            if (!targetGameweek) {
+                return createGameweekErrorResponse(`Gameweek with ID ${gameweekId} not found.`, 'NOT_FOUND', ['Please check the gameweek ID.']);
             }
-        } else if (getCurrent) {
-            gameweek = gameweeks.find((gw) => gw.is_current);
-            if (!gameweek) {
-                return {
-                    content: [
-                        {
-                            type: 'text' as const,
-                            text: 'Current gameweek not found',
-                        },
-                    ],
-                    isError: true,
-                };
+        } else if (effectiveType) {
+            switch (effectiveType) {
+                case 'current':
+                    targetGameweek = allGameweeks.find((gw) => gw.is_current);
+                    if (!targetGameweek) return createGameweekErrorResponse('Current gameweek not found.', 'NOT_FOUND', ['The FPL season might not have started or is between gameweeks.']);
+                    break;
+                case 'next':
+                    targetGameweek = allGameweeks.find((gw) => gw.is_next);
+                    if (!targetGameweek) return createGameweekErrorResponse('Next gameweek not found.', 'NOT_FOUND', ['This might be the last gameweek of the season.']);
+                    break;
+                case 'previous':
+                    if (currentGameweekIndex > 0) {
+                        targetGameweek = allGameweeks[currentGameweekIndex - 1];
+                    } else if (currentGameweekIndex === 0) {
+                         return createGameweekErrorResponse('No previous gameweek available (currently on Gameweek 1).', 'NOT_FOUND');
+                    }
+                    else {
+                        // If no current gameweek, find the last finished one
+                        const finishedGameweeks = allGameweeks.filter(gw => gw.finished).sort((a, b) => b.id - a.id);
+                        if (finishedGameweeks.length > 0) {
+                            targetGameweek = finishedGameweeks[0];
+                        } else {
+                            return createGameweekErrorResponse('No previous gameweek found.', 'NOT_FOUND', ['The season may not have started.']);
+                        }
+                    }
+                    break;
+                default:
+                    return createGameweekErrorResponse(`Invalid gameweek type specified: ${effectiveType}.`, 'VALIDATION_ERROR');
             }
-        } else if (getNext) {
-            gameweek = gameweeks.find((gw) => gw.is_next);
-            if (!gameweek) {
-                return {
-                    content: [
-                        {
-                            type: 'text' as const,
-                            text: 'Next gameweek not found',
-                        },
-                    ],
-                    isError: true,
-                };
+             if (!targetGameweek) { // Should be caught by specific cases, but as a fallback
+                return createGameweekErrorResponse(`Could not determine gameweek for type: ${effectiveType}.`, 'NOT_FOUND');
             }
+        } else {
+             // This case should ideally be prevented by Zod schema requiring one identifier
+            return createGameweekErrorResponse("No gameweek identifier (ID or type) provided.", "VALIDATION_ERROR");
         }
 
-        // If no specific gameweek was requested, return all gameweeks
-        if (!gameweek) {
-            const formattedData = gameweeks.map(gw => ({
-                id: gw.id,
-                name: gw.name,
-                is_current: gw.is_current,
-                is_next: gw.is_next,
-                deadline_time: gw.deadline_time,
-                finished: gw.finished
-            }));
-            
-            return {
-                content: [
-                    {
-                        type: 'text' as const,
-                        text: JSON.stringify(formattedData, null, 2),
-                    },
-                ],
-            };
-        }
+        let responseText = "GAMEWEEK_INFO:\n";
+        const deadline = new Date(targetGameweek.deadline_time);
+        const formattedDeadline = deadline.toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' });
+        
+        let status = targetGameweek.is_current ? 'Current' :
+                     targetGameweek.is_next ? 'Next' :
+                     targetGameweek.finished ? 'Finished' : 'Upcoming';
 
-        // Include fixtures if requested
-        let fixtures: Fixture[] = [];
-        let teams: any[] = []; // Declare teams outside the conditional blocks
+        responseText += `Name: ${targetGameweek.name}\n`;
+        responseText += `Status: ${status}\n`;
+        responseText += `Deadline: ${formattedDeadline}\n`;
+        responseText += `Finished: ${targetGameweek.finished ? 'Yes' : 'No'}\n`;
+
+        let rawDataForOutput: any = { gameweek: targetGameweek };
 
         if (includeFixtures) {
+            responseText += "\nFIXTURES:\n";
             const fixturesData = await redis.get('fpl:fixtures');
-            if (fixturesData) {
+            const teamsData = await redis.get('fpl:teams'); // For team names
+
+            if (fixturesData && teamsData) {
                 const allFixtures: Fixture[] = JSON.parse(fixturesData);
-                fixtures = allFixtures.filter(f => f.gameweek_id === gameweek?.id);
-                
-                // Get teams data
-                const teamsData = await redis.get('fpl:teams');
-                if (teamsData) {
-                    teams = JSON.parse(teamsData);
+                const allTeams: Team[] = JSON.parse(teamsData);
+                const gameweekFixtures = allFixtures.filter(f => f.gameweek_id === targetGameweek?.id);
+
+                if (gameweekFixtures.length > 0) {
+                    gameweekFixtures.forEach(fixture => {
+                        const homeTeam = allTeams.find(t => t.id === fixture.home_team_id)?.short_name || `Team ${fixture.home_team_id}`;
+                        const awayTeam = allTeams.find(t => t.id === fixture.away_team_id)?.short_name || `Team ${fixture.away_team_id}`;
+                        const kickoff = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : 'TBD';
+                        // Later: Add difficulty, key match indicators
+                        responseText += `- ${homeTeam} vs ${awayTeam} (${kickoff})\n`;
+                    });
+                    rawDataForOutput.fixtures = gameweekFixtures;
+                } else {
+                    responseText += "- No fixtures found for this gameweek.\n";
                 }
+            } else {
+                responseText += "- Fixture or team data currently unavailable in cache.\n";
             }
         }
 
-        // Format response
-        const response = {
-            gameweek,
-            ...(includeFixtures && { fixtures })
-        };
+        responseText += `\nData timestamp: ${dataTimestamp}`;
 
-        // Create formatted response for chat
-        const deadline = new Date(gameweek.deadline_time);
-        const formattedDeadline = deadline.toLocaleString();
-        const status = gameweek.is_current ? 'Current Gameweek' : 
-                       gameweek.is_next ? 'Next Gameweek' : 
-                       gameweek.finished ? 'Completed' : 'Upcoming';
-                       
-        let formattedOutput = `
-Gameweek: ${gameweek.name}
-Status: ${status}
-Deadline: ${formattedDeadline}
-Finished: ${gameweek.finished ? 'Yes' : 'No'}
-`;
-
-        if (includeFixtures && fixtures.length > 0) {
-            formattedOutput += '\nFixtures:\n';
-            fixtures.forEach(fixture => {
-                const kickoff = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleString() : 'TBD';
-                
-                // Use team_h and team_a properties
-                const homeTeamId = fixture.team_h;
-                const awayTeamId = fixture.team_a;
-                
-                // Look up team names from teams array
-                const homeTeam = teams.find((t: any) => t.id === homeTeamId)?.name || 'Unknown';
-                const awayTeam = teams.find((t: any) => t.id === awayTeamId)?.name || 'Unknown';
-                
-                formattedOutput += `${homeTeam} vs ${awayTeam} (${kickoff})\n`;
-            });
-        } else if (includeFixtures) {
-            formattedOutput += '\nNo fixtures found for this gameweek.';
+        if (includeRawData) {
+            responseText += '\n\nRAW_DATA:\n' + JSON.stringify(rawDataForOutput, null, 2);
         }
 
         return {
-            content: [
-                {
-                    type: 'text' as const,
-                    text: includeRawData 
-                        ? formattedOutput + '\n\nRaw data:\n' + JSON.stringify(response, null, 2)
-                        : formattedOutput,
-                },
-            ],
+            content: [{ type: 'text' as const, text: responseText }],
         };
+
     } catch (error) {
-        console.error('Error getting gameweek:', error);
-        return {
-            content: [
-                {
-                    type: 'text' as const,
-                    text: `Error: ${
-                        error instanceof Error ? error.message : 'Unknown error'
-                    }`,
-                },
-            ],
-            isError: true,
-        };
+        console.error('Error in getGameweek tool:', error);
+        const err = error as Error;
+        return createGameweekErrorResponse(
+            err.message || 'An unknown error occurred while fetching gameweek data.',
+            'TOOL_EXECUTION_ERROR'
+        );
     }
 }
 
-// For backward compatibility
+// Keep this for now if it's directly used by the current registration,
+// but we aim to move to a single get-gameweek tool registration.
 export async function getCurrentGameweek(_args: {}, _extra: any) {
-    return getGameweek({ getCurrent: true }, _extra);
+    // Cast _args to GetGameweekParams and set type
+    return getGameweek({ type: 'current' } as GetGameweekParams, _extra);
 }

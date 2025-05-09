@@ -1,7 +1,7 @@
 ---
-description: This rule outlines the guidelines and steps for enhancing the FPL MCP server tools to align with the `claude-tool-enhancement-plan`. The primary goal is to leverage Claude's native entity extraction by providing tools that accept flexible inputs and return rich, structured text responses.
+description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # FPL MCP Server Tool Enhancement Rule
 
