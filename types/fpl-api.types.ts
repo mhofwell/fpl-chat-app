@@ -33,6 +33,9 @@ export interface FplElement {
     selected_by_percent: string;
     now_cost: number;
     cost_change_start: number;
+    cost_change_event: number;
+    cost_change_event_fall: number;
+    cost_change_start_fall: number;
     status: string; // Player availability status e.g. 'a' (available), 'd' (doubtful), 'i' (injured), 's' (suspended), 'u' (unavailable)
     minutes: number;
     goals_scored: number;
@@ -100,8 +103,8 @@ export interface FplFixtureStatValue {
 
 export interface FplFixtureStat {
     identifier: string; // e.g., "goals_scored", "assists"
-    a: FplFixtureStatValue[]; // Away team player stats
-    h: FplFixtureStatValue[]; // Home team player stats
+    a: FplFixtureStatValue[]; // Away team player stats for this identifier
+    h: FplFixtureStatValue[]; // Home team player stats for this identifier
 }
 
 export interface FplFixture {

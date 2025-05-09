@@ -2,6 +2,8 @@
 import redis from '../../lib/redis/redis-client';
 import { Player, Team as FplTeamType } from '../../../../../types/fpl-domain.types';
 import { PlayerDetailResponse } from '../../../../../types/fpl-api.types';
+import { fuzzyMatch } from '../../lib/utils/text-helpers';
+import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 
 // Define the expected structure for parameters, matching the Zod schema
 interface GetPlayerParams {
@@ -10,14 +12,6 @@ interface GetPlayerParams {
     teamName?: string;
     position?: string;
     includeRawData?: boolean;
-}
-
-function fuzzyMatch(text: string, searchTerm: string): boolean {
-    if (!text || !searchTerm) return false;
-    const normalizedText = text.toLowerCase();
-    const searchWords = searchTerm.toLowerCase().split(' ').filter(s => s.length > 0);
-    
-    return searchWords.every(searchWord => normalizedText.includes(searchWord));
 }
 
 function fuzzyMatchPlayerName(fullName: string, webName: string, searchTerm: string): boolean {
@@ -34,18 +28,7 @@ function fuzzyMatchPlayerName(fullName: string, webName: string, searchTerm: str
     return searchWords.every(sw => nameParts.some(np => np.includes(sw)));
 }
 
-// Helper for structured error response
-function createErrorResponse(message: string, type: string = 'GENERIC_ERROR', suggestions?: string[]) {
-    let text = `ERROR:\nType: ${type}\nMessage: ${message}`;
-    if (suggestions && suggestions.length > 0) {
-        text += `\n\nSUGGESTIONS:\n- ${suggestions.join('\n- ')}`;
-    }
-    text += `\nData timestamp: ${new Date().toISOString()}`;
-    return {
-        content: [{ type: 'text' as const, text }],
-        isError: true,
-    };
-}
+
 
 export async function getPlayer(
     params: GetPlayerParams,
@@ -63,7 +46,7 @@ export async function getPlayer(
     try {
         // Validate at least playerQuery is provided if no other specific identifiers
         if (!playerQuery && !teamId && !teamName && !position) {
-            return createErrorResponse(
+            return createStructuredErrorResponse(
                 'At least one search parameter (playerQuery, teamId, teamName, or position) must be provided.',
                 'VALIDATION_ERROR',
                 ['Try specifying a player name or ID using playerQuery.']
@@ -75,7 +58,7 @@ export async function getPlayer(
             !((teamId || teamName) && position)
         ) {
             // If only team or position is provided, it's too broad for getPlayer. Guide to searchPlayers.
-            return createErrorResponse(
+            return createStructuredErrorResponse(
                 'Searching by only team or only position is too broad for finding a single player. Please provide a player name/ID or combine team/position.',
                 'VALIDATION_ERROR',
                 [
@@ -91,14 +74,14 @@ export async function getPlayer(
         ]);
 
         if (!playersCached) {
-            return createErrorResponse(
+            return createStructuredErrorResponse(
                 'Players data not found in cache. Please try again later.',
                 'CACHE_ERROR',
                 ['Ensure data synchronization jobs are running.']
             );
         }
         if (!teamsCached) {
-            return createErrorResponse(
+            return createStructuredErrorResponse(
                 'Teams data not found in cache. Please try again later.',
                 'CACHE_ERROR',
                 ['Ensure data synchronization jobs are running.']
@@ -148,7 +131,7 @@ export async function getPlayer(
         }
         
         if (potentialPlayers.length === 0) {
-            return createErrorResponse(
+            return createStructuredErrorResponse(
                 `No player found matching the specified criteria.`,
                 'NOT_FOUND',
                 ['Try refining your search terms (player name/ID, team, position).', 'Check spelling.']
@@ -158,7 +141,7 @@ export async function getPlayer(
         if (potentialPlayers.length > 1) {
             const limit = 5;
             if (potentialPlayers.length > limit) {
-                return createErrorResponse(
+                return createStructuredErrorResponse(
                     `Query resulted in too many matches (${potentialPlayers.length}). Please be more specific.`,
                     'AMBIGUOUS_QUERY',
                     ['Try adding more criteria like team name, position, or use a specific FPL player ID.']
@@ -169,7 +152,10 @@ export async function getPlayer(
                 const team = allTeams.find(t => t.id === p.team_id);
                 return `CANDIDATE_${idx + 1}:\nName: ${p.full_name} (${p.web_name})\nTeam: ${team?.name || 'Unknown'}\nPosition: ${p.position || 'N/A'}\nFPL ID: ${p.id}`;
             }).join('\n\n')}\n\nTo get specific player data, please use the FPL ID or refine your query.`;
-            return { content: [{ type: 'text' as const, text: disambiguationText }] };
+            return { 
+                content: [{ type: 'text' as const, text: disambiguationText }],
+                isError: true
+            };
         }
         
         const foundPlayer = potentialPlayers[0];
@@ -290,7 +276,7 @@ export async function getPlayer(
     } catch (error) {
         console.error('Error in getPlayer tool:', error);
         const err = error as Error;
-        return createErrorResponse(
+        return createStructuredErrorResponse(
             err.message || 'An unknown error occurred while fetching player data.',
             'TOOL_EXECUTION_ERROR',
             ['Please try again. If the error persists, contact support.']
