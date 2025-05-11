@@ -3,6 +3,8 @@ import { fplApiService } from './service';
 import { createClient } from '@/utils/supabase/server';
 import { Team, Player, Gameweek, Fixture } from '../../../../types/fpl-domain.types';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { cacheInvalidator } from './cache-invalidator';
+import { FplElement, FplEvent, FplTeam, BootstrapStaticResponse } from '../../../../types/fpl-api.types';
 
 // Maximum items per batch for efficient database operations
 const BATCH_SIZE = 50;
@@ -16,12 +18,14 @@ export async function syncFplData() {
         `Starting FPL data synchronization job at ${new Date().toISOString()}`
     );
 
+    const supabase = await createClient();
+
     try {
         // First update Redis cache
         await fplApiService.updateAllData();
 
         // Then update database
-        await updateDatabaseFromCache();
+        await updateDatabaseFromCache(supabase);
 
         console.log(
             `FPL data synchronization completed successfully at ${new Date().toISOString()}`
@@ -43,10 +47,7 @@ export async function syncFplData() {
 /**
  * Updates the database tables with data from our cached FPL data
  */
-async function updateDatabaseFromCache() {
-    // Get Supabase client
-    const supabase = await createClient();
-
+async function updateDatabaseFromCache(supabase: SupabaseClient) {
     try {
         // Get all data from Redis cache (already formatted in our schema)
         const [teams, players, gameweeks, fplFixtures] = await Promise.all([
@@ -64,6 +65,9 @@ async function updateDatabaseFromCache() {
             away_team_id: fixture.team_a,
             kickoff_time: fixture.kickoff_time ?? '',
             finished: fixture.finished,
+            started: fixture.started,
+            team_h_score: fixture.team_h_score,
+            team_a_score: fixture.team_a_score,
             last_updated: new Date().toISOString()
         }));
 
@@ -78,6 +82,9 @@ async function updateDatabaseFromCache() {
             updateGameweeks(supabase, gameweeks),
             updateFixtures(supabase, fixtures),
         ]);
+
+        // After core entities are updated, especially 'gameweeks' with their 'finished' status
+        await updatePlayerGameweekStatsForFinishedGameweeks(supabase);
 
         console.log('All database updates completed successfully');
     } catch (error) {
@@ -101,6 +108,22 @@ async function updateTeams(supabase: SupabaseClient, teams: Team[]) {
                 name: team.name,
                 short_name: team.short_name,
                 last_updated: new Date().toISOString(),
+                code: team.code,
+                form: team.form,
+                played: team.played,
+                points: team.points,
+                position: team.position,
+                strength: team.strength,
+                strength_attack_home: team.strength_attack_home,
+                strength_attack_away: team.strength_attack_away,
+                strength_defence_home: team.strength_defence_home,
+                strength_defence_away: team.strength_defence_away,
+                win: team.win,
+                loss: team.loss,
+                draw: team.draw,
+                strength_overall_home: team.strength_overall_home,
+                strength_overall_away: team.strength_overall_away,
+                pulse_id: team.pulse_id,
             }));
             
             const { error } = await supabase
@@ -133,6 +156,7 @@ async function updatePlayers(supabase: SupabaseClient, players: Player[]) {
                 team_id: player.team_id,
                 position: player.position,
                 last_updated: new Date().toISOString(),
+                element_type: player.element_type,
             }));
             
             const { error } = await supabase
@@ -141,9 +165,9 @@ async function updatePlayers(supabase: SupabaseClient, players: Player[]) {
                 
             if (error) throw error;
         }
-        console.log('Players updated successfully');
+        console.log('Basic players table updated successfully');
     } catch (error) {
-        console.error('Error updating players:', error);
+        console.error('Error updating basic players table:', error);
         throw error;
     }
 }
@@ -198,6 +222,8 @@ async function updateFixtures(supabase: SupabaseClient, fixtures: Fixture[]) {
                 away_team_id: fixture.away_team_id,
                 kickoff_time: fixture.kickoff_time,
                 finished: fixture.finished,
+                team_h_score: fixture.team_h_score,
+                team_a_score: fixture.team_a_score,
                 last_updated: new Date().toISOString(),
             }));
             
@@ -211,6 +237,124 @@ async function updateFixtures(supabase: SupabaseClient, fixtures: Fixture[]) {
     } catch (error) {
         console.error('Error updating fixtures:', error);
         throw error;
+    }
+}
+
+async function updatePlayerGameweekStatsForFinishedGameweeks(supabase: SupabaseClient) {
+    console.log('Checking for newly finished gameweeks to update player stats...');
+    try {
+        const { data: gameweeksToProcess, error: gwError } = await supabase
+            .from('gameweeks')
+            .select('id, name')
+            .eq('finished', true)
+            .eq('is_player_stats_synced', false)
+            .order('id', { ascending: true });
+
+        if (gwError) {
+            console.error('Error fetching gameweeks to process:', gwError);
+            throw gwError; // Rethrow to indicate a problem in this critical step
+        }
+
+        if (!gameweeksToProcess || gameweeksToProcess.length === 0) {
+            console.log('No new finished gameweeks to process for player stats.');
+            return;
+        }
+
+        console.log(`Found ${gameweeksToProcess.length} finished gameweeks to process: ${gameweeksToProcess.map(gw => `${gw.name} (ID: ${gw.id})`).join(', ')}`);
+
+        for (const gw of gameweeksToProcess) {
+            console.log(`Processing player stats for ${gw.name} (ID: ${gw.id})...`);
+            try {
+                // This service method needs to fetch from FPL API: event/{gw.id}/live/
+                // Ensure getLiveGameweek returns a structure like { elements: [ { id: player_id, stats: { ... } } ] }
+                const liveData = await fplApiService.getLiveGameweek(gw.id);
+
+                if (!liveData || !liveData.elements || liveData.elements.length === 0) {
+                    console.warn(`No live data or elements found for Gameweek ID: ${gw.id}.`);
+                    // Optionally, mark as synced if you are sure no data means it's "processed" for an empty GW.
+                    // For now, we'll skip and it will be picked up again if this is an error.
+                    // If it's consistently empty and shouldn't be, it implies an issue with getGameweekLive or FPL API.
+                    console.log(`Skipping Gameweek ID: ${gw.id} due to no live player data. It will be re-attempted next cycle if it remains unfinished.`);
+                    continue;
+                }
+
+                // Define a more specific type if available, e.g., from fpl-api.types.ts
+                const playerStatsRecords = liveData.elements.map((playerElement: any) => ({
+                    player_id: playerElement.id,
+                    gameweek_id: gw.id,
+                    minutes: playerElement.stats.minutes,
+                    goals_scored: playerElement.stats.goals_scored,
+                    assists: playerElement.stats.assists,
+                    clean_sheets: playerElement.stats.clean_sheets,
+                    goals_conceded: playerElement.stats.goals_conceded,
+                    own_goals: playerElement.stats.own_goals,
+                    penalties_saved: playerElement.stats.penalties_saved,
+                    penalties_missed: playerElement.stats.penalties_missed,
+                    yellow_cards: playerElement.stats.yellow_cards,
+                    red_cards: playerElement.stats.red_cards,
+                    saves: playerElement.stats.saves,
+                    bonus: playerElement.stats.bonus,
+                    bps: playerElement.stats.bps,
+                    influence: parseFloat(playerElement.stats.influence || '0.0').toFixed(1),
+                    creativity: parseFloat(playerElement.stats.creativity || '0.0').toFixed(1),
+                    threat: parseFloat(playerElement.stats.threat || '0.0').toFixed(1),
+                    ict_index: parseFloat(playerElement.stats.ict_index || '0.0').toFixed(1),
+                    total_points: playerElement.stats.total_points,
+                    // created_at and last_updated have DB defaults
+                }));
+
+                if (playerStatsRecords.length > 0) {
+                    // Upsert player stats in batches
+                    for (let i = 0; i < playerStatsRecords.length; i += BATCH_SIZE) {
+                        const batch = playerStatsRecords.slice(i, i + BATCH_SIZE);
+                        const { error: upsertError } = await supabase
+                            .from('player_gameweek_stats')
+                            .upsert(batch, { onConflict: 'player_id, gameweek_id' });
+
+                        if (upsertError) {
+                            console.error(`Error upserting batch of player stats for Gameweek ID ${gw.id}:`, upsertError);
+                            // Throw to stop processing this gameweek; it will be retried next time.
+                            throw upsertError; 
+                        }
+                    }
+                } else {
+                    console.log(`No player stat records to upsert for Gameweek ID: ${gw.id} (liveData.elements was empty after filtering).`);
+                }
+
+                // If all batches for this gameweek are successful, mark the gameweek as synced
+                const { error: updateGwError } = await supabase
+                    .from('gameweeks')
+                    .update({ 
+                        is_player_stats_synced: true, 
+                        last_updated: new Date().toISOString() 
+                    })
+                    .eq('id', gw.id);
+
+                if (updateGwError) {
+                    console.error(`CRITICAL: Error marking Gameweek ID ${gw.id} as synced after saving stats:`, updateGwError);
+                    // This is a significant issue, as stats are saved but GW might be reprocessed.
+                    // Throw to halt and signal manual intervention or a more robust retry for this specific update.
+                    throw updateGwError;
+                } else {
+                    console.log(`Successfully processed player stats and marked ${gw.name} (ID: ${gw.id}) as synced.`);
+                    // Invalidate the enriched players cache as its underlying data (player_gameweek_stats) has changed.
+                    await cacheInvalidator.invalidatePattern('fpl:players:enriched*');
+                    console.log(`Invalidated fpl:players:enriched* cache after updating gameweek ${gw.id} player stats.`);
+                }
+
+            } catch (err) {
+                console.error(`Failed to process player stats for Gameweek ${gw.name} (ID: ${gw.id}):`, err);
+                // Continue to the next gameweek, this one will be attempted again in the next sync cycle.
+                console.log(`Gameweek ${gw.name} (ID: ${gw.id}) will be re-attempted in the next sync cycle.`);
+            }
+        }
+        console.log('Finished processing player gameweek stats for all identified gameweeks.');
+
+    } catch (error) {
+        console.error('Error in updatePlayerGameweekStatsForFinishedGameweeks outer scope:', error);
+        // Do not re-throw if other parts of syncFplData should attempt to run.
+        // However, this indicates a failure in the stats sync loop itself.
+        throw error; // Rethrowing to make it visible that this part of the sync failed.
     }
 }
 
@@ -243,6 +387,9 @@ export async function checkForUpdates() {
                     away_team_id: fixture.team_a,
                     kickoff_time: fixture.kickoff_time ?? '',
                     finished: fixture.finished,
+                    started: fixture.started,
+                    team_h_score: fixture.team_h_score,
+                    team_a_score: fixture.team_a_score,
                     last_updated: new Date().toISOString()
                 }));
                 
@@ -261,3 +408,119 @@ export async function checkForUpdates() {
         };
     }
 }
+
+/**
+ * Synchronizes only the database tables derived directly from bootstrap-static data,
+ * using a fresh BootstrapStaticResponse object.
+ * This is intended for use when bootstrap-static is known to have changed.
+ */
+export async function syncBootstrapDerivedTablesFromApiData(
+    supabase: SupabaseClient,
+    bootstrapData: BootstrapStaticResponse
+) {
+    console.log('Starting targeted DB sync for bootstrap-derived tables...');
+    try {
+        // Map FPL API team data to our domain Team type
+        const teamsToUpdate: Team[] = bootstrapData.teams.map((apiTeam: FplTeam) => ({
+            id: apiTeam.id,
+            name: apiTeam.name,
+            short_name: apiTeam.short_name,
+            code: apiTeam.code,
+            form: apiTeam.form,
+            played: apiTeam.played,
+            points: apiTeam.points,
+            position: apiTeam.position,
+            strength: apiTeam.strength,
+            strength_attack_home: apiTeam.strength_attack_home,
+            strength_attack_away: apiTeam.strength_attack_away,
+            strength_defence_home: apiTeam.strength_defence_home,
+            strength_defence_away: apiTeam.strength_defence_away,
+            win: apiTeam.win,
+            loss: apiTeam.loss,
+            draw: apiTeam.draw,
+            strength_overall_home: apiTeam.strength_overall_home,
+            strength_overall_away: apiTeam.strength_overall_away,
+            pulse_id: apiTeam.pulse_id,
+            last_updated: new Date().toISOString(),
+        }));
+
+        // Map FPL API player (element) data to our domain Player type (basic info only)
+        const playersToUpdate: Player[] = bootstrapData.elements.map((apiPlayer: FplElement) => ({
+            id: apiPlayer.id,
+            web_name: apiPlayer.web_name,
+            full_name: `${apiPlayer.first_name} ${apiPlayer.second_name}`,
+            first_name: apiPlayer.first_name, // Storing for completeness, though not in 'players' table schema from snippet
+            second_name: apiPlayer.second_name, // Storing for completeness
+            team_id: apiPlayer.team,
+            element_type: apiPlayer.element_type,
+            position: apiPlayer.element_type === 1 ? 'GKP' : apiPlayer.element_type === 2 ? 'DEF' : apiPlayer.element_type === 3 ? 'MID' : 'FWD',
+            // Fields below are more for enriched player, but basic sync uses a subset
+            form: apiPlayer.form,
+            points_per_game: apiPlayer.points_per_game,
+            total_points: apiPlayer.total_points,
+            minutes: apiPlayer.minutes,
+            goals_scored: apiPlayer.goals_scored,
+            assists: apiPlayer.assists,
+            clean_sheets: apiPlayer.clean_sheets,
+            goals_conceded: apiPlayer.goals_conceded,
+            own_goals: apiPlayer.own_goals,
+            penalties_saved: apiPlayer.penalties_saved,
+            penalties_missed: apiPlayer.penalties_missed,
+            yellow_cards: apiPlayer.yellow_cards,
+            red_cards: apiPlayer.red_cards,
+            saves: apiPlayer.saves,
+            bonus: apiPlayer.bonus,
+            bps: apiPlayer.bps,
+            status: apiPlayer.status,
+            news: apiPlayer.news,
+            news_added: apiPlayer.news_added,
+            chance_of_playing_next_round: apiPlayer.chance_of_playing_next_round,
+            chance_of_playing_this_round: apiPlayer.chance_of_playing_this_round,
+            influence: apiPlayer.influence,
+            creativity: apiPlayer.creativity,
+            threat: apiPlayer.threat,
+            ict_index: apiPlayer.ict_index,
+            ep_next: apiPlayer.ep_next,
+            ep_this: apiPlayer.ep_this,
+            selected_by_percent: apiPlayer.selected_by_percent,
+            transfers_in: apiPlayer.transfers_in,
+            transfers_out: apiPlayer.transfers_out,
+            dreamteam_count: apiPlayer.dreamteam_count,
+            now_cost: apiPlayer.now_cost,
+            cost_change_start: apiPlayer.cost_change_start,
+            cost_change_event: apiPlayer.cost_change_event,
+            cost_change_event_fall: apiPlayer.cost_change_event_fall,
+            cost_change_start_fall: apiPlayer.cost_change_start_fall,
+            last_updated: new Date().toISOString(),
+            current_season_performance: [], // Not populated by this sync
+            previous_season_summary: null, // Not populated by this sync
+        }));
+
+        // Map FPL API gameweek (event) data to our domain Gameweek type
+        const gameweeksToUpdate: Gameweek[] = bootstrapData.events.map((apiEvent: FplEvent) => ({
+            id: apiEvent.id,
+            name: apiEvent.name,
+            deadline_time: apiEvent.deadline_time,
+            is_current: apiEvent.is_current,
+            is_next: apiEvent.is_next,
+            finished: apiEvent.finished,
+            data_checked: apiEvent.data_checked, // Include if in your Gameweek domain type / DB schema
+            is_previous: apiEvent.is_previous, // Include if in your Gameweek domain type / DB schema
+            average_entry_score: apiEvent.average_entry_score, // Include if relevant
+            // is_player_stats_synced is a DB-specific flag, not directly from bootstrap-static events
+            last_updated: new Date().toISOString(),
+        }));
+
+        await updateTeams(supabase, teamsToUpdate);
+        await updatePlayers(supabase, playersToUpdate); // This updates the 'players' table
+        await updateGameweeks(supabase, gameweeksToUpdate);
+
+        console.log('Targeted DB sync for bootstrap-derived tables completed successfully.');
+        // Note: Invalidation of fpl:players:enriched* should happen in the caller (performIncrementalRefresh)
+        // because this function's scope is only the DB update.
+    } catch (error) {
+        console.error('Error during targeted DB sync for bootstrap-derived tables:', error);
+        throw error; // Re-throw to be caught by the caller
+    }
+}
+

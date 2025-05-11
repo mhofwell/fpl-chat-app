@@ -8,6 +8,7 @@ import { liveRefreshProcessor } from './processors/live-refresh';
 import { dailyRefreshProcessor } from './processors/daily-refresh';
 import { hourlyRefreshProcessor } from './processors/hourly-refresh';
 import { postMatchRefreshProcessor } from './processors/post-match-refresh';
+import { preDeadlineRefreshProcessor } from './processors/pre-deadline-refresh';
 import { scheduleUpdateProcessor } from './processors/schedule-update';
 
 // Store for active workers
@@ -19,6 +20,7 @@ const processors: Record<string, (job: Job) => Promise<any>> = {
     [QUEUE_NAMES.DAILY_REFRESH]: dailyRefreshProcessor,
     [QUEUE_NAMES.HOURLY_REFRESH]: hourlyRefreshProcessor,
     [QUEUE_NAMES.POST_MATCH_REFRESH]: postMatchRefreshProcessor,
+    [QUEUE_NAMES.PRE_DEADLINE_REFRESH]: preDeadlineRefreshProcessor,
     [QUEUE_NAMES.SCHEDULER_MANAGER]: scheduleUpdateProcessor,
 };
 
@@ -26,6 +28,12 @@ const processors: Record<string, (job: Job) => Promise<any>> = {
 export function initializeWorkers() {
     // Create a worker for each queue
     Object.values(QUEUE_NAMES).forEach((queueName) => {
+        // Check if a processor exists for the queueName to prevent errors
+        // if QUEUE_NAMES has more entries than processors temporarily
+        if (!processors[queueName]) {
+            console.warn(`No processor found for queue: ${queueName}. Skipping worker initialization for this queue.`);
+            return;
+        }
         console.log(`Initializing worker for queue: ${queueName}`);
 
         // Create worker with appropriate processor

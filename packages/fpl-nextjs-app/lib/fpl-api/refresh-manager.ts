@@ -3,6 +3,11 @@
 import { fplApiService } from './service';
 import { createClient } from '@/utils/supabase/server';
 import redis from '../redis/redis-client';
+import { cacheInvalidator } from './cache-invalidator';
+import { syncBootstrapDerivedTablesFromApiData, syncFplData } from './fpl-data-sync';
+import { BootstrapStaticResponse } from '../../../../types/fpl-api.types';
+import { calculateTtl } from './client';
+import { fplApi } from './client'; // Make sure fplApi is imported for direct API calls
 
 /**
  * Handles FPL data refresh with different strategies based on game state
@@ -265,11 +270,21 @@ export class RefreshManager {
                 return { refreshed: false, state: 'no-current-gameweek' };
             }
 
+            // Invalidate fixture cache for the current gameweek to ensure fresh fetch
+            const fixtureCacheKeyForGameweek = `fpl:fixtures:gw:${currentGameweek.id}`;
+            // Consider if the general 'fpl:fixtures' key also needs invalidation if
+            // getFixtures(currentGameweek.id) might fall back or affect it.
+            // For now, targeting the specific gameweek key.
+            await cacheInvalidator.invalidateKeys([fixtureCacheKeyForGameweek]);
+            console.log(
+                `Invalidated fixtures cache for GW ${currentGameweek.id} during live refresh.`
+            );
+
             // Only refresh live data for active gameweek
             await Promise.all([
                 // Live player stats
                 fplApiService.getLiveGameweek(currentGameweek.id),
-                // Latest match scores
+                // Latest match scores - will now fetch fresh due to invalidation
                 fplApiService.getFixtures(currentGameweek.id),
             ]);
 
@@ -324,9 +339,21 @@ export class RefreshManager {
             // Update completed fixture data and player stats
             const currentGameweek = await fplApiService.getCurrentGameweek();
             if (currentGameweek) {
+                // Invalidate relevant caches to ensure fresh data fetch
+                const fixtureCacheKeyForGameweek = `fpl:fixtures:gw:${currentGameweek.id}`;
+                const liveDataCacheKey = `fpl:gameweek:${currentGameweek.id}:live`;
+                // Again, consider general 'fpl:fixtures' if necessary.
+                await cacheInvalidator.invalidateKeys([
+                    fixtureCacheKeyForGameweek,
+                    liveDataCacheKey,
+                ]);
+                console.log(
+                    `Invalidated fixtures and live data cache for GW ${currentGameweek.id} during post-match refresh.`
+                );
+
                 await Promise.all([
-                    fplApiService.getFixtures(currentGameweek.id),
-                    fplApiService.getLiveGameweek(currentGameweek.id),
+                    fplApiService.getFixtures(currentGameweek.id), // Will fetch fresh
+                    fplApiService.getLiveGameweek(currentGameweek.id), // Will fetch fresh
                     // Also update the database with results
                     fplApiService.updateFixtureResults(),
                 ]);
@@ -352,50 +379,105 @@ export class RefreshManager {
 
     /**
      * Perform hourly refresh (60min) - Pre-deadline data
+     * Now includes bootstrap-static check and update logic.
      */
     async performPreDeadlineRefresh(): Promise<{
         refreshed: boolean;
         state: string;
         details?: any;
+        reason?: string;
     }> {
         try {
-            // Check if we're in pre-deadline window
-            const isPreDeadline = await this.isPreDeadlineWindow();
-
-            // Skip if not in pre-deadline window
-            if (!isPreDeadline) {
-                return { refreshed: false, state: 'skipped' };
+            const isPreDeadlineWindowActive = await this.isPreDeadlineWindow();
+            if (!isPreDeadlineWindowActive) {
+                return { refreshed: false, state: 'skipped', reason: 'Not in pre-deadline window.' };
             }
 
-            console.log('Performing pre-deadline data refresh');
+            console.log('Performing pre-deadline data refresh...');
+            const currentState = await this.getCurrentState(); // Get current state for logging context
+            console.log('[PreDeadline] Current state:', currentState);
+            let bootstrapChanged = false;
+            let bootstrapSyncDetails: any = {};
 
-            // Focus on player data (transfers, injuries) and gameweek info
+            // --- Start: Bootstrap-static handling (similar to performIncrementalRefresh) ---
+            try {
+                const freshBootstrapStaticData: BootstrapStaticResponse = await fplApi.getBootstrapStatic();
+                const freshBootstrapStaticString = JSON.stringify(freshBootstrapStaticData);
+                const cachedBootstrapStaticString = await redis.get('fpl:bootstrap-static');
+                let areDataDifferent = !cachedBootstrapStaticString || freshBootstrapStaticString !== cachedBootstrapStaticString;
+
+                if (areDataDifferent) {
+                    console.log('[PreDeadline] Bootstrap-static data has changed. Updating Redis cache and syncing DB.');
+                    bootstrapChanged = true;
+                    const ttl = calculateTtl('bootstrap-static');
+                    await redis.set('fpl:bootstrap-static', freshBootstrapStaticString, 'EX', ttl);
+                    console.log(`[PreDeadline] Redis cache "fpl:bootstrap-static" updated with TTL: ${ttl}s.`);
+
+                    const supabase = await createClient();
+                    await syncBootstrapDerivedTablesFromApiData(supabase, freshBootstrapStaticData);
+                    console.log('[PreDeadline] Bootstrap-derived DB tables synced successfully.');
+
+                    await cacheInvalidator.invalidatePattern('fpl:players:enriched*');
+                    console.log('[PreDeadline] Enriched players cache pattern "fpl:players:enriched*" invalidated due to bootstrap change.');
+                    bootstrapSyncDetails = {
+                        bootstrapChangeDetected: true,
+                        bootstrapCacheUpdated: 'fpl:bootstrap-static',
+                        bootstrapDbSyncStatus: 'Bootstrap-derived tables synced',
+                        bootstrapEnrichedCacheInvalidated: 'fpl:players:enriched*',
+                    };
+                } else {
+                    console.log('[PreDeadline] No changes detected in bootstrap-static data.');
+                    bootstrapSyncDetails = { bootstrapChangeDetected: false };
+                }
+            } catch (bootstrapError) {
+                console.error('[PreDeadline] Error during bootstrap-static handling:', bootstrapError);
+                // Log this error but continue with other pre-deadline tasks if possible,
+                // as they might operate on potentially stale but existing cache.
+                bootstrapSyncDetails = {
+                    bootstrapChangeDetected: false, // Or true if error happened after detection
+                    bootstrapError: (bootstrapError as Error).message,
+                };
+            }
+            // --- End: Bootstrap-static handling ---
+
+            // Original pre-deadline tasks: Focus on player data (transfers, injuries) and gameweek info
+            // These calls will use fplApiService, which respects existing caches.
+            // If bootstrapChanged was true, these might now build from fresher underlying data if their specific caches were also invalidated
+            // or depend on the (now updated) fpl:bootstrap-static.
+            console.log('[PreDeadline] Fetching/refreshing players and gameweeks data for pre-deadline specific caches.');
             await Promise.all([
-                fplApiService.getPlayers(),
-                fplApiService.getGameweeks(),
+                fplApiService.getPlayers(), // Refreshes fpl:players:enriched* (if its TTL expired or invalidated by bootstrap)
+                fplApiService.getGameweeks(), // Refreshes fpl:gameweeks (if its TTL expired or depends on bootstrap)
             ]);
+            console.log('[PreDeadline] Players and Gameweeks data refreshed/fetched.');
 
-            // Get next deadline details for logging
-            const gameweeks = await fplApiService.getGameweeks();
+            const gameweeks = await fplApiService.getGameweeks(); // Fetch again to get potentially updated list
             const nextGameweek = gameweeks.find((gw) => gw.is_next);
-
-            // Log the refresh
-            await this.logRefresh('pre-deadline', 'pre-deadline', {
+            const logDetails = {
+                ...bootstrapSyncDetails,
+                preDeadlineTasksRan: true,
                 nextGameweekId: nextGameweek?.id,
                 deadline: nextGameweek?.deadline_time,
-            });
+            };
+
+            await this.logRefresh('pre-deadline', 'pre-deadline', logDetails);
 
             return {
-                refreshed: true,
+                refreshed: true, // Considered refreshed as pre-deadline tasks ran, and bootstrap might have been.
                 state: 'pre-deadline',
-                details: {
-                    nextGameweekId: nextGameweek?.id,
-                    deadline: nextGameweek?.deadline_time,
-                },
+                details: logDetails,
+                reason: bootstrapChanged ? 'Bootstrap data changed and pre-deadline tasks ran.' : 'Pre-deadline tasks ran.',
             };
+
         } catch (error) {
             console.error('Error in pre-deadline refresh:', error);
-            return { refreshed: false, state: 'error' };
+            await this.logRefresh('pre-deadline', 'error', { error: (error as Error).message });
+            return {
+                refreshed: false,
+                state: 'error',
+                details: { error: (error as Error).message },
+                reason: 'Error during pre-deadline refresh execution.',
+            };
         }
     }
 
@@ -437,33 +519,72 @@ export class RefreshManager {
         refreshed: boolean;
         state: string;
         details?: any;
+        reason?: string;
     }> {
         try {
-            console.log('Performing full data refresh and database update');
+            console.log('Performing full data refresh: Updating all caches and synchronizing database.');
 
-            // Full data refresh
+            // 1. Refresh all FPL data in Redis cache via fplApiService
             await fplApiService.updateAllData();
+            console.log('All Redis caches updated via fplApiService.updateAllData().');
 
-            // Get current state for logging
-            const state = await this.getCurrentState();
+            // 2. Perform a full database synchronization using fpl-data-sync
+            // This will update all relevant DB tables (teams, players, gameweeks, fixtures)
+            // and then handle player_gameweek_stats for finished gameweeks,
+            // which also includes invalidating fpl:players:enriched* cache.
+            console.log('Starting full database synchronization via syncFplData...');
+            const syncResult = await syncFplData(); // This is the comprehensive sync
 
-            // Log the refresh
-            await this.logRefresh('full', 'full', {
-                ...state.details,
+            if (!syncResult.success) {
+                console.error('Full database synchronization failed:', syncResult.message, syncResult.error);
+                // Log this specific error but continue to log the overall refresh attempt
+                await this.logRefresh('full', 'partial_error', {
+                    redisUpdate: 'success',
+                    dbSyncStatus: 'failed',
+                    dbSyncMessage: syncResult.message,
+                    dbSyncError: syncResult.error,
+                });
+                return {
+                    refreshed: true, // Redis caches were updated
+                    state: 'partial_error',
+                    details: {
+                        redisUpdate: 'success',
+                        dbSyncStatus: 'failed',
+                        dbSyncMessage: syncResult.message,
+                        error: syncResult.error || 'DB sync failed',
+                    },
+                    reason: 'Redis caches updated, but full database sync failed.',
+                };
+            }
+            console.log('Full database synchronization completed successfully.');
+
+            const currentState = await this.getCurrentState(); // Get current state for logging context
+            const logDetails = {
+                ...currentState.details,
+                redisUpdate: 'success',
+                dbSyncStatus: 'success',
                 includesDatabaseUpdate: true,
-            });
+            };
+            await this.logRefresh('full', 'full_success', logDetails); // Use a more specific state
 
             return {
                 refreshed: true,
-                state: 'full',
-                details: {
-                    ...state.details,
-                    includesDatabaseUpdate: true,
-                },
+                state: 'full_success', // More specific state
+                details: logDetails,
+                reason: 'All caches updated and database fully synchronized.',
             };
+
         } catch (error) {
-            console.error('Error in full refresh:', error);
-            return { refreshed: false, state: 'error' };
+            console.error('Error during full refresh:', error);
+            await this.logRefresh('full', 'error', {
+                error: (error as Error).message,
+            });
+            return {
+                refreshed: false,
+                state: 'error',
+                details: { error: (error as Error).message },
+                reason: 'Error during full refresh execution.',
+            };
         }
     }
 
@@ -474,33 +595,135 @@ export class RefreshManager {
         refreshed: boolean;
         state: string;
         details?: any;
+        reason?: string;
     }> {
         try {
-            console.log(`Manual refresh triggered by admin: ${adminId}`);
+            console.log(`Manual refresh triggered by admin: ${adminId}. Updating all caches and synchronizing database.`);
 
-            // Full data refresh
+            // 1. Refresh all FPL data in Redis cache via fplApiService
             await fplApiService.updateAllData();
+            console.log('[ManualRefresh] All Redis caches updated via fplApiService.updateAllData().');
 
-            // Get current state for logging
-            const state = await this.getCurrentState();
+            // 2. Perform a full database synchronization using fpl-data-sync
+            console.log('[ManualRefresh] Starting full database synchronization via syncFplData...');
+            const syncResult = await syncFplData();
 
-            // Log the manual refresh
-            await this.logRefresh('manual', state.state, {
-                ...state.details,
+            if (!syncResult.success) {
+                console.error('[ManualRefresh] Full database synchronization failed:', syncResult.message, syncResult.error);
+                await this.logRefresh('manual', 'partial_error', {
+                    triggeredBy: adminId,
+                    redisUpdate: 'success',
+                    dbSyncStatus: 'failed',
+                    dbSyncMessage: syncResult.message,
+                    dbSyncError: syncResult.error,
+                });
+                return {
+                    refreshed: true, // Redis caches were updated
+                    state: 'partial_error',
+                    details: {
+                        triggeredBy: adminId,
+                        redisUpdate: 'success',
+                        dbSyncStatus: 'failed',
+                        dbSyncMessage: syncResult.message,
+                        error: syncResult.error || 'DB sync failed',
+                    },
+                    reason: 'Redis caches updated, but full database sync failed during manual refresh.',
+                };
+            }
+            console.log('[ManualRefresh] Full database synchronization completed successfully.');
+
+            const currentState = await this.getCurrentState(); // Get current state for logging context
+            const logDetails = {
+                ...currentState.details,
                 triggeredBy: adminId,
-            });
+                redisUpdate: 'success',
+                dbSyncStatus: 'success',
+                includesDatabaseUpdate: true,
+            };
+            await this.logRefresh('manual', 'manual_success', logDetails);
 
             return {
                 refreshed: true,
-                state: 'manual',
-                details: {
-                    ...state.details,
-                    triggeredBy: adminId,
-                },
+                state: 'manual_success',
+                details: logDetails,
+                reason: 'All caches updated and database fully synchronized by manual trigger.',
             };
+
         } catch (error) {
             console.error('Error in manual refresh:', error);
-            return { refreshed: false, state: 'error' };
+            await this.logRefresh('manual', 'error', {
+                triggeredBy: adminId,
+                error: (error as Error).message,
+            });
+            return {
+                refreshed: false,
+                state: 'error',
+                details: {
+                    triggeredBy: adminId,
+                    error: (error as Error).message
+                },
+                reason: 'Error during manual refresh execution.',
+            };
+        }
+    }
+
+    async performIncrementalRefresh(): Promise<{
+        refreshed: boolean;
+        state: string;
+        details?: any;
+    }> {
+        const currentState = await this.getCurrentState();
+        console.log('Performing incremental refresh...', { state: currentState.state });
+
+        try {
+            const freshBootstrapStaticData: BootstrapStaticResponse = await fplApi.getBootstrapStatic();
+            const freshBootstrapStaticString = JSON.stringify(freshBootstrapStaticData);
+            const cachedBootstrapStaticString = await redis.get('fpl:bootstrap-static');
+            let areDataDifferent = !cachedBootstrapStaticString || freshBootstrapStaticString !== cachedBootstrapStaticString;
+
+            if (areDataDifferent) {
+                console.log('Bootstrap-static data has changed. Updating Redis cache and syncing DB.');
+                const ttl = calculateTtl('bootstrap-static');
+                await redis.set('fpl:bootstrap-static', freshBootstrapStaticString, 'EX', ttl);
+                console.log(`Redis cache "fpl:bootstrap-static" updated with TTL: ${ttl}s.`);
+
+                try {
+                    const supabase = await createClient();
+                    await syncBootstrapDerivedTablesFromApiData(supabase, freshBootstrapStaticData);
+                    console.log('Bootstrap-derived DB tables synced successfully.');
+
+                    await cacheInvalidator.invalidatePattern('fpl:players:enriched*');
+                    console.log('Enriched players cache pattern "fpl:players:enriched*" invalidated.');
+
+                    const logDetails = { dbSyncStatus: 'Bootstrap-derived tables synced' };
+                    await this.logRefresh('incremental', currentState.state, logDetails);
+                    return {
+                        refreshed: true,
+                        state: currentState.state,
+                        details: logDetails,
+                    };
+                } catch (syncOrInvalidationError) {
+                    console.error('Error during DB sync or enriched cache invalidation:', syncOrInvalidationError);
+                    return {
+                        refreshed: false,
+                        state: currentState.state,
+                        details: { dbSyncStatus: 'Bootstrap-derived tables sync failed' },
+                    };
+                }
+            } else {
+                return {
+                    refreshed: false,
+                    state: currentState.state,
+                    details: { dbSyncStatus: 'Bootstrap-static data unchanged' },
+                };
+            }
+        } catch (error) {
+            console.error('Error in incremental refresh:', error);
+            return {
+                refreshed: false,
+                state: currentState.state,
+                details: { dbSyncStatus: 'Incremental refresh failed' },
+            };
         }
     }
 }

@@ -9,6 +9,8 @@ import {
     BootstrapStaticResponse,
     PlayerDetailResponse,
     GameweekLiveResponse,
+    PlayerHistoryPast,
+    PlayerHistory,
 } from '../../../../types/fpl-api.types'; // Corrected path
 import { calculateTtl } from './client';
 import { fetchWithCache } from './cache-helper';
@@ -102,97 +104,149 @@ export const fplApiService = {
     /**
      * Get all players with Redis caching and optional filtering
      */
-    async getPlayers(options?: {
-        teamId?: number;
-        position?: string;
-    }): Promise<Player[]> {
-        const cacheKey = `fpl:players${options?.teamId ? `:team:${options.teamId}` : ''}${options?.position ? `:pos:${options.position}` : ''}`;
+    async getPlayers(options?: PlayerFilterOptions): Promise<Player[]> {
+        const baseCacheKey = `fpl:players:enriched${options?.teamId ? `:team:${options.teamId}` : ''}${options?.position ? `:pos:${options.position}` : ''}`;
 
         return fetchWithCache<Player[]>(
-            cacheKey,
+            baseCacheKey,
             async () => {
                 const bootstrapData = await fplApi.getBootstrapStatic();
-                let players = bootstrapData.elements.map(
-                    (apiPlayer: FplElement) => {
-                        let positionString;
-                        switch (apiPlayer.element_type) {
-                            case 1: positionString = 'GKP'; break;
-                            case 2: positionString = 'DEF'; break;
-                            case 3: positionString = 'MID'; break;
-                            case 4: positionString = 'FWD'; break;
-                            default: positionString = 'Unknown';
-                        }
-
-                        return {
-                            id: apiPlayer.id,
-                            web_name: apiPlayer.web_name,
-                            full_name: `${apiPlayer.first_name} ${apiPlayer.second_name}`,
-                            first_name: apiPlayer.first_name,
-                            second_name: apiPlayer.second_name,
-                            team_id: apiPlayer.team,
-                            element_type: apiPlayer.element_type,
-                            position: positionString,
-                            
-                            form: apiPlayer.form,
-                            points_per_game: apiPlayer.points_per_game,
-                            total_points: apiPlayer.total_points,
-                            minutes: apiPlayer.minutes,
-                            goals_scored: apiPlayer.goals_scored,
-                            assists: apiPlayer.assists,
-                            clean_sheets: apiPlayer.clean_sheets,
-                            goals_conceded: apiPlayer.goals_conceded,
-                            own_goals: apiPlayer.own_goals,
-                            penalties_saved: apiPlayer.penalties_saved,
-                            penalties_missed: apiPlayer.penalties_missed,
-                            yellow_cards: apiPlayer.yellow_cards,
-                            red_cards: apiPlayer.red_cards,
-                            saves: apiPlayer.saves,
-                            bonus: apiPlayer.bonus,
-                            bps: apiPlayer.bps,
-
-                            status: apiPlayer.status,
-                            news: apiPlayer.news,
-                            news_added: apiPlayer.news_added,
-                            chance_of_playing_next_round: apiPlayer.chance_of_playing_next_round,
-                            chance_of_playing_this_round: apiPlayer.chance_of_playing_this_round,
-
-                            influence: apiPlayer.influence,
-                            creativity: apiPlayer.creativity,
-                            threat: apiPlayer.threat,
-                            ict_index: apiPlayer.ict_index,
-
-                            ep_next: apiPlayer.ep_next,
-                            ep_this: apiPlayer.ep_this,
-
-                            selected_by_percent: apiPlayer.selected_by_percent,
-                            transfers_in: apiPlayer.transfers_in,
-                            transfers_out: apiPlayer.transfers_out,
-                            dreamteam_count: apiPlayer.dreamteam_count,
-
-                            now_cost: apiPlayer.now_cost,
-                            cost_change_start: apiPlayer.cost_change_start,
-                            cost_change_event: apiPlayer.cost_change_event, // Add this
-                            cost_change_event_fall: apiPlayer.cost_change_event_fall, // Add this
-                            cost_change_start_fall: apiPlayer.cost_change_start_fall, // Add this
-                            
-                            last_updated: new Date().toISOString(),
-                        };
-                    }
-                );
+                let basicPlayers = bootstrapData.elements.map((apiPlayer: FplElement) => ({
+                    id: apiPlayer.id,
+                    web_name: apiPlayer.web_name,
+                    full_name: `${apiPlayer.first_name} ${apiPlayer.second_name}`,
+                    first_name: apiPlayer.first_name,
+                    second_name: apiPlayer.second_name,
+                    team_id: apiPlayer.team,
+                    element_type: apiPlayer.element_type,
+                    position: apiPlayer.element_type === 1 ? 'GKP' : apiPlayer.element_type === 2 ? 'DEF' : apiPlayer.element_type === 3 ? 'MID' : 'FWD',
+                    form: apiPlayer.form,
+                    points_per_game: apiPlayer.points_per_game,
+                    total_points: apiPlayer.total_points,
+                    minutes: apiPlayer.minutes,
+                    goals_scored: apiPlayer.goals_scored,
+                    assists: apiPlayer.assists,
+                    clean_sheets: apiPlayer.clean_sheets,
+                    goals_conceded: apiPlayer.goals_conceded,
+                    own_goals: apiPlayer.own_goals,
+                    penalties_saved: apiPlayer.penalties_saved,
+                    penalties_missed: apiPlayer.penalties_missed,
+                    yellow_cards: apiPlayer.yellow_cards,
+                    red_cards: apiPlayer.red_cards,
+                    saves: apiPlayer.saves,
+                    bonus: apiPlayer.bonus,
+                    bps: apiPlayer.bps,
+                    status: apiPlayer.status,
+                    news: apiPlayer.news,
+                    news_added: apiPlayer.news_added,
+                    chance_of_playing_next_round: apiPlayer.chance_of_playing_next_round,
+                    chance_of_playing_this_round: apiPlayer.chance_of_playing_this_round,
+                    influence: apiPlayer.influence,
+                    creativity: apiPlayer.creativity,
+                    threat: apiPlayer.threat,
+                    ict_index: apiPlayer.ict_index,
+                    ep_next: apiPlayer.ep_next,
+                    ep_this: apiPlayer.ep_this,
+                    selected_by_percent: apiPlayer.selected_by_percent,
+                    transfers_in: apiPlayer.transfers_in,
+                    transfers_out: apiPlayer.transfers_out,
+                    dreamteam_count: apiPlayer.dreamteam_count,
+                    now_cost: apiPlayer.now_cost,
+                    cost_change_start: apiPlayer.cost_change_start,
+                    cost_change_event: apiPlayer.cost_change_event,
+                    cost_change_event_fall: apiPlayer.cost_change_event_fall,
+                    cost_change_start_fall: apiPlayer.cost_change_start_fall,
+                    last_updated: new Date().toISOString(),
+                    current_season_performance: [],
+                    previous_season_summary: null,
+                }));
 
                 if (options?.teamId) {
-                    players = players.filter(
-                        (player: Player) => player.team_id === options.teamId
-                    );
+                    basicPlayers = basicPlayers.filter((p: Player) => p.team_id === options.teamId);
                 }
                 if (options?.position) {
-                    players = players.filter(
-                        (player: Player) => player.position === options.position
-                    );
+                    basicPlayers = basicPlayers.filter((p: Player) => p.position === options.position);
                 }
-                return players;
+
+                const supabase = await createClient();
+
+                const enrichedPlayersPromises = basicPlayers.map(async (player: Player) => {
+                    // Fetch current season performance
+                    const { data: currentSeasonStats, error: csError } = await supabase
+                        .from('player_gameweek_stats')
+                        .select('gameweek_id, total_points, minutes') // Select only necessary fields
+                        .eq('player_id', player.id)
+                        .order('gameweek_id', { ascending: true });
+
+                    if (csError) {
+                        console.error(`Error fetching current season stats for player ${player.id}:`, csError);
+                    }
+                    
+                    player.current_season_performance = currentSeasonStats?.map(s => ({
+                        gameweek: s.gameweek_id,
+                        points: s.total_points,
+                        minutes: s.minutes,
+                    })) || [];
+
+                    // Attempt to fetch previous season summary
+                    let { data: prevSeasonData, error: psError } = await supabase
+                        .from('player_season_stats')
+                        .select('season_name, total_points, minutes') // Select only necessary fields
+                        .eq('player_id', player.id)
+                        .order('season_name', { ascending: false })
+                        .limit(1)
+                        .single();
+
+                    // If previous season data is not found, and it's the specific error indicating no rows
+                    if (psError && psError.code === 'PGRST116') { // 'PGRST116' indicates that a single row was expected but not found
+                        console.log(`No previous season summary for player ${player.id} in DB. Attempting to fetch details.`);
+                        try {
+                            // This will fetch from API, populate player_season_stats and player_gameweek_stats,
+                            // and invalidate fpl:players:enriched* cache.
+                            await this.getPlayerDetail(player.id); 
+                            
+                            // After getPlayerDetail runs and (potentially) populates the DB,
+                            // re-attempt to fetch the previous_season_summary for the current player.
+                            const { data: refreshedPrevSeasonData, error: refreshedPsError } = await supabase
+                                .from('player_season_stats')
+                                .select('season_name, total_points, minutes')
+                                .eq('player_id', player.id)
+                                .order('season_name', { ascending: false })
+                                .limit(1)
+                                .single();
+
+                            if (refreshedPsError && refreshedPsError.code !== 'PGRST116') {
+                                console.error(`Error re-fetching previous season summary for player ${player.id} after detail fetch:`, refreshedPsError);
+                            } else if (refreshedPrevSeasonData) {
+                                prevSeasonData = refreshedPrevSeasonData; // Assign the newly fetched data
+                                console.log(`Successfully fetched and assigned previous_season_summary for player ${player.id} after detail fetch.`);
+                            } else {
+                                console.log(`Still no previous_season_summary for player ${player.id} after detail fetch and re-query.`);
+                            }
+                        } catch (detailFetchError) {
+                            console.error(`Error calling getPlayerDetail for player ${player.id} within getPlayers:`, detailFetchError);
+                        }
+                    } else if (psError) { // Handle other errors for the initial fetch
+                        console.error(`Error fetching previous season summary for player ${player.id}:`, psError);
+                    }
+
+                    // Populate previous_season_summary if data is available
+                    if (prevSeasonData) {
+                        player.previous_season_summary = {
+                            season_name: prevSeasonData.season_name,
+                            total_points: prevSeasonData.total_points,
+                            minutes: prevSeasonData.minutes,
+                        };
+                    }
+                    return player;
+                });
+
+                const resolvedEnrichedPlayers = await Promise.all(enrichedPlayersPromises);
+                return resolvedEnrichedPlayers;
             },
-            'bootstrap-static'
+            'bootstrap-static' // The primary source for this cache is still bootstrap-static.
+                               // Enrichment happens on top. The invalidation of this cache key
+                               // by getPlayerDetail is important.
         );
     },
 
@@ -238,35 +292,20 @@ export const fplApiService = {
      * Get fixtures for a specific gameweek
      */
     async getFixtures(gameweekId?: number): Promise<FplFixture[]> {
-        // Generate cache key based on filters
         const cacheKey = `fpl:fixtures${gameweekId ? `:gw:${gameweekId}` : ''}`;
 
         return fetchWithCache<FplFixture[]>(
             cacheKey,
             async () => {
-                const fixturesData = await fplApi.getFixtures();
-                let fixtures = fixturesData.map((fixture: FplFixture) => ({
-                    id: fixture.id,
-                    gameweek_id: fixture.event,
-                    home_team_id: fixture.team_h,
-                    away_team_id: fixture.team_a,
-                    kickoff_time: fixture.kickoff_time,
-                    finished: fixture.finished,
-                    started: fixture.started,
-                    team_h_score: fixture.team_h_score,
-                    team_a_score: fixture.team_a_score,
-                    stats: fixture.stats,
-                    last_updated: new Date().toISOString(),
-                }));
+                let fixturesData = await fplApi.getFixtures(); // Raw FplFixture[]
 
-                // Filter by gameweek if specified
+                // Filter by gameweek if specified, directly on the raw FplFixture objects
                 if (gameweekId) {
-                    fixtures = fixtures.filter(
-                        (fixture: Fixture) => fixture.gameweek_id === gameweekId
+                    fixturesData = fixturesData.filter(
+                        (fixture: FplFixture) => fixture.event === gameweekId
                     );
                 }
-
-                return fixtures;
+                return fixturesData; // Return the (potentially filtered) raw FplFixture array
             },
             'fixtures'
         );
@@ -281,9 +320,109 @@ export const fplApiService = {
         return fetchWithCache<PlayerDetailResponse>(
             cacheKey,
             async () => {
-                return await fplApi.getPlayerDetail(playerId);
+                const playerDetailData = await fplApi.getPlayerDetail(playerId);
+
+                // After fetching from API, update anrichment tables in PostgreSQL
+                if (playerDetailData) {
+                    const supabase = await createClient();
+
+                    // 1. Update player_season_stats (history_past)
+                    if (playerDetailData.history_past && playerDetailData.history_past.length > 0) {
+                        const seasonStatsRecords = playerDetailData.history_past.map((season: PlayerHistoryPast) => ({
+                            player_id: playerId, // The current player's ID
+                            season_name: season.season_name,
+                            element_code: season.element_code,
+                            start_cost: season.start_cost,
+                            end_cost: season.end_cost,
+                            minutes: season.minutes,
+                            goals_scored: season.goals_scored,
+                            assists: season.assists,
+                            clean_sheets: season.clean_sheets,
+                            goals_conceded: season.goals_conceded,
+                            own_goals: season.own_goals,
+                            penalties_saved: season.penalties_saved,
+                            penalties_missed: season.penalties_missed,
+                            yellow_cards: season.yellow_cards,
+                            red_cards: season.red_cards,
+                            saves: season.saves,
+                            bonus: season.bonus,
+                            bps: season.bps,
+                            influence: season.influence,
+                            creativity: season.creativity,
+                            threat: season.threat,
+                            ict_index: season.ict_index,
+                            total_points: season.total_points,
+                            // last_updated will be set by the database trigger
+                        }));
+
+                        const { error: seasonStatsError } = await supabase
+                            .from('player_season_stats')
+                            .upsert(seasonStatsRecords, { onConflict: 'player_id, season_name' });
+
+                        if (seasonStatsError) {
+                            console.error(`Error upserting player_season_stats for player ${playerId}:`, seasonStatsError);
+                            // Decide on error handling: throw, log, or continue
+                        } else {
+                            console.log(`Upserted player_season_stats for player ${playerId}`);
+                        }
+                    }
+
+                    // 2. Update player_gameweek_stats (history - current season)
+                    if (playerDetailData.history && playerDetailData.history.length > 0) {
+                        const gameweekStatsRecords = playerDetailData.history.map((gwStat: PlayerHistory) => ({
+                            player_id: playerId, // The current player's ID (element in history is also this player)
+                            gameweek_id: gwStat.round, // 'round' usually corresponds to gameweek ID
+                            minutes: gwStat.minutes,
+                            goals_scored: gwStat.goals_scored,
+                            assists: gwStat.assists,
+                            clean_sheets: gwStat.clean_sheets,
+                            goals_conceded: gwStat.goals_conceded,
+                            own_goals: gwStat.own_goals,
+                            penalties_saved: gwStat.penalties_saved,
+                            penalties_missed: gwStat.penalties_missed,
+                            yellow_cards: gwStat.yellow_cards,
+                            red_cards: gwStat.red_cards,
+                            saves: gwStat.saves,
+                            bonus: gwStat.bonus,
+                            bps: gwStat.bps,
+                            influence: parseFloat(gwStat.influence || '0.0').toFixed(1),
+                            creativity: parseFloat(gwStat.creativity || '0.0').toFixed(1),
+                            threat: parseFloat(gwStat.threat || '0.0').toFixed(1),
+                            ict_index: parseFloat(gwStat.ict_index || '0.0').toFixed(1),
+                            total_points: gwStat.total_points,
+                            // value: gwStat.value, 
+                            // selected: gwStat.selected,
+                            // transfers_balance: gwStat.transfers_balance,
+                            // transfers_in: gwStat.transfers_in,
+                            // transfers_out: gwStat.transfers_out,
+                            // last_updated will be set by the database trigger
+                        }));
+
+                        const { error: gameweekStatsError } = await supabase
+                            .from('player_gameweek_stats')
+                            .upsert(gameweekStatsRecords, { onConflict: 'player_id, gameweek_id' });
+                        
+                        if (gameweekStatsError) {
+                            console.error(`Error upserting player_gameweek_stats for player ${playerId} from detail history:`, gameweekStatsError);
+                        } else {
+                            console.log(`Upserted player_gameweek_stats for player ${playerId} from detail history`);
+                            // Invalidate enriched player cache after this successful update
+                            // This is important because getPlayers() uses player_gameweek_stats
+                            // We might want a more targeted invalidation if possible, e.g., for just this player
+                            // For now, a broader invalidation might be acceptable or a general one that handles this.
+                            // Consider adding a specific invalidation for the 'fpl:players:enriched*' pattern
+                            // or a more specific one if your `cacheInvalidator` supports it.
+                            await cacheInvalidator.invalidatePattern('fpl:players:enriched*');
+                             console.log(`Invalidated fpl:players:enriched* cache after player ${playerId} detail history update.`);
+                        }
+                    }
+                }
+                return playerDetailData;
             },
-            'player-detail'
+            'player-detail' // This 'category' for TTL calculation might need adjustment
+                           // if the expectation is that `getPlayerDetail` now has side effects.
+                           // The TTL should be for the raw API response cache.
+                           // The DB persistence is a side effect.
         );
     },
 
@@ -775,12 +914,6 @@ export const fplApiService = {
 
             // Update database with completed fixture results
             await this.updateFixtureResults();
-
-            // Update player stats for completed gameweeks
-            const completedGameweeks = gameweeks.filter((gw: Gameweek) => gw.finished);
-            for (const gameweek of completedGameweeks) {
-                await this.updatePlayerStats(gameweek.id);
-            }
 
             // Set up deadline-based cache invalidation
             const upcomingGameweeks = gameweeks.filter((gw: Gameweek) => {

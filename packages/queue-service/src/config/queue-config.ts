@@ -4,6 +4,7 @@ export const QUEUE_NAMES = {
     DAILY_REFRESH: 'daily-refresh',
     HOURLY_REFRESH: 'hourly-refresh',
     POST_MATCH_REFRESH: 'post-match-refresh',
+    PRE_DEADLINE_REFRESH: 'pre-deadline-refresh',
     SCHEDULER_MANAGER: 'schedule-update',
 };
 
@@ -42,9 +43,15 @@ export const JOB_OPTIONS = {
         timeout: 180000, // 3 minutes
     },
     
+    [QUEUE_NAMES.PRE_DEADLINE_REFRESH]: {
+        attempts: 3,
+        priority: 3,
+        timeout: 180000,
+    },
+    
     [QUEUE_NAMES.DAILY_REFRESH]: {
         attempts: 5, // More attempts for important daily refresh
-        priority: 5, // High priority
+        priority: 5,
         timeout: 300000, // 5 minutes timeout
     },
     

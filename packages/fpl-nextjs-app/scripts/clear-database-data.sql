@@ -19,6 +19,12 @@ BEGIN
     DELETE FROM players WHERE TRUE;
     DELETE FROM gameweeks WHERE TRUE;
     DELETE FROM teams WHERE TRUE;
+
+    -- Clear utility and log tables
+    DELETE FROM refresh_logs WHERE TRUE;
+    DELETE FROM system_meta WHERE TRUE;
+    DELETE FROM dynamic_cron_schedule WHERE TRUE;
+    DELETE FROM system_config WHERE TRUE;
     
     -- Clean the auth.users table (only if you want to remove all users)
     DELETE FROM auth.users WHERE TRUE;
