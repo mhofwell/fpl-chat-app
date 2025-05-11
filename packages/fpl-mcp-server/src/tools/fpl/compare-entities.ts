@@ -1,6 +1,6 @@
 import redis from '../../lib/redis/redis-client';
 import { Player, Team, Fixture } from '../../../../../types/fpl-domain.types';
-import { PlayerDetailResponse, FplFixtureStatValue, FplFixtureStat } from '../../../../../types/fpl-api.types'; // For PlayerDetail & stats
+import { PlayerDetailResponse } from '../../../../../types/fpl-api.types'; // For PlayerDetail & stats
 import { fuzzyMatch, findAndDisambiguateTeams, FindTeamResult } from '../../lib/utils/text-helpers';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 // --- PLAYER DISAMBIGUATION HELPER ---
@@ -193,7 +193,7 @@ export async function compareEntities(params: CompareEntitiesParams, _extra: any
             const valPad = 15;  // Padding for values to align columns
 
             responseText += "STATISTIC".padEnd(statPad) + "| " + p1.web_name.substring(0,valPad-2).padEnd(valPad) + "| " + p2.web_name.substring(0,valPad-2).padEnd(valPad) + "\n";
-            responseText += "-".repeat(statPad) + "|-" + "-".repeat(valPad-1) + "|-" + "-".repeat(valPad-1) + "\n";
+            responseText += "-".repeat(statPad) + "|-" + "-".repeat(valPad-1) + "-|" + "-".repeat(valPad-1) + "\n";
             
             const formatStat = (label: string, val1: any, val2: any, suffix1 = "", suffix2 = "") => 
                 `${label.padEnd(statPad)}| ${(val1 ?? 'N/A').toString().substring(0,valPad-2-suffix1.length)}${suffix1}`.padEnd(statPad + 2 + valPad) + 
@@ -280,7 +280,12 @@ export async function compareEntities(params: CompareEntitiesParams, _extra: any
                     const homeTeam = allTeams.find(t => t.id === fix.home_team_id);
                     const awayTeam = allTeams.find(t => t.id === fix.away_team_id);
                     const kickoffDate = fix.kickoff_time ? new Date(fix.kickoff_time).toLocaleDateString('en-GB', { year: '2-digit', month: 'short', day: 'numeric' }) : 'Date N/A';
-                    responseText += `  - ${kickoffDate} (GW${fix.gameweek_id || 'N/A'}): ${homeTeam?.short_name} ${fix.team_h_score} - ${fix.team_a_score} ${awayTeam?.short_name}\n`;
+                    const homeScore = fix.team_h_score ?? 0; // Default to 0 if null/undefined
+                    const awayScore = fix.team_a_score ?? 0; // Default to 0 if null/undefined
+
+                    const winner = homeScore > awayScore ? homeTeam?.short_name :
+                                   awayScore > homeScore ? awayTeam?.short_name : 'Draw';
+                    responseText += `  - ${kickoffDate} (GW${fix.gameweek_id || 'N/A'}): ${homeTeam?.short_name} ${fix.team_h_score} - ${fix.team_a_score} ${awayTeam?.short_name} (Winner: ${winner})\n`;
                 });
             } else {
                 responseText += "  - No recent head-to-head matches found in available data.\n";
@@ -310,6 +315,13 @@ export async function compareEntities(params: CompareEntitiesParams, _extra: any
             };
             formatTeamUpcomingFixtures(t1, "Team 1:");
             formatTeamUpcomingFixtures(t2, "Team 2:");
+
+            if (includeRawData) {
+                (rawDataForOutput.entity1 as any).h2hFixturesAgainstEntity2 = h2hFixtures.filter(f => f.home_team_id === (entity1 as Team).id || f.away_team_id === (entity1 as Team).id);
+                (rawDataForOutput.entity1 as any).upcomingFixtures = (allFixtures.filter(f => (f.home_team_id === (entity1 as Team).id || f.away_team_id === (entity1 as Team).id) && !f.finished)
+                            .sort((a,b) => new Date(a.kickoff_time || 0).getTime() - new Date(b.kickoff_time || 0).getTime())
+                            .slice(0,3));
+            }
         }
 
         responseText += `\n\nData timestamp: ${dataTimestamp}`;

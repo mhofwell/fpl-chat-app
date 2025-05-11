@@ -1,6 +1,5 @@
 // src/config/index.ts
 export const config = {
-    port: process.env.NEXT_CLIENT_PORT || 3001,
     nextjsPort: process.env.NEXT_CLIENT_PORT || 3000,
     nodeEnv: process.env.NODE_ENV || 'development',
     redisUrl:
