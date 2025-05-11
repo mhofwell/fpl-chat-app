@@ -1,4 +1,4 @@
-import { Team } from '../../../../../types/fpl-domain.types'; // Adjusted path relative to lib/utils
+import { Team } from '../../../../../types/fpl-domain.types'; // Corrected path
 
 /**
  * Performs a fuzzy match check.
@@ -14,7 +14,7 @@ export function fuzzyMatch(text: string | undefined | null, searchTerm: string |
     // Match if all search words (split by space) are present in the text
     const searchWords = searchTerm.toLowerCase().split(' ').filter(s => s.length > 0);
 
-    if (searchWords.length === 0) return true; // Or false, depending on desired behavior for empty search term
+    if (searchWords.length === 0) return false;
 
     return searchWords.every(searchWord => normalizedText.includes(searchWord));
 }

@@ -3,15 +3,12 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { getTeam } from './fpl/team';
 import { getPlayer } from './fpl/player';
-import { echoMessage } from './echo';
 import { getGameweek } from './fpl/gameweek'; // Main function for gameweek data
 import { searchFixtures } from './fpl/search-fixtures';
 import { searchPlayers } from './fpl/search-players'; // We will create this file next
 import { compareEntities } from './fpl/compare-entities'; // We will create the main function later
 
 export function registerTools(server: McpServer) {
-    // Echo tool for testing
-    server.tool('echo', { message: z.string() }, echoMessage);
     // FPL tools
     server.tool('get-team', {
         teamQuery: z.string().describe("Team name (supports partial/fuzzy match) or exact FPL team ID."),

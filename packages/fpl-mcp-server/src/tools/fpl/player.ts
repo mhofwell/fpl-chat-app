@@ -14,25 +14,33 @@ interface GetPlayerParams {
     includeRawData?: boolean;
 }
 
+// Player status mapping
+const playerStatusMap: { [key: string]: string } = {
+    'a': 'Available',
+    'd': 'Doubtful', // FPL API: chance_of_playing_this_round/next_round for more detail (e.g. 75%, 25%)
+    'i': 'Injured',
+    's': 'Suspended',
+    'u': 'Unavailable', // e.g. left club, on loan
+    'n': 'News / Not available for selection' // Typically means left club / loan / other reasons
+};
+
 function fuzzyMatchPlayerName(fullName: string, webName: string, searchTerm: string): boolean {
-    if (!searchTerm) return true; 
+    if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     const fn = fullName.toLowerCase();
     const wn = webName.toLowerCase();
 
     if (fn.includes(term) || wn.includes(term)) return true;
 
-    const nameParts = (fn + " " + wn).split(' ').filter(s => s.length > 1); 
+    const nameParts = (fn + " " + wn).split(' ').filter(s => s.length > 1);
     const searchWords = term.split(' ').filter(s => s.length > 0);
 
     return searchWords.every(sw => nameParts.some(np => np.includes(sw)));
 }
 
-
-
 export async function getPlayer(
     params: GetPlayerParams,
-    _extra: any // _extra is typically used for MCP server context, not used here yet
+    _extra: any
 ) {
     const {
         playerQuery,
@@ -140,18 +148,16 @@ export async function getPlayer(
 
         if (potentialPlayers.length > 1) {
             const limit = 5;
+            let disambiguationHeaderText = `DISAMBIGUATION_REQUIRED:\nYour query matched ${potentialPlayers.length} players`;
             if (potentialPlayers.length > limit) {
-                return createStructuredErrorResponse(
-                    `Query resulted in too many matches (${potentialPlayers.length}). Please be more specific.`,
-                    'AMBIGUOUS_QUERY',
-                    ['Try adding more criteria like team name, position, or use a specific FPL player ID.']
-                );
+                disambiguationHeaderText = `DISAMBIGUATION_REQUIRED:\nYour query matched over ${limit} players (showing first ${limit})`;
             }
+            disambiguationHeaderText += `. Please specify one:\n`;
 
-            const disambiguationText = `DISAMBIGUATION_REQUIRED:\nYour query matched ${potentialPlayers.length} players. Please specify one:\nData timestamp: ${dataTimestamp}\n\n${potentialPlayers.slice(0, limit).map((p, idx) => {
+            const disambiguationText = `${disambiguationHeaderText}${potentialPlayers.slice(0, limit).map((p, idx) => {
                 const team = allTeams.find(t => t.id === p.team_id);
                 return `CANDIDATE_${idx + 1}:\nName: ${p.full_name} (${p.web_name})\nTeam: ${team?.name || 'Unknown'}\nPosition: ${p.position || 'N/A'}\nFPL ID: ${p.id}`;
-            }).join('\n\n')}\n\nTo get specific player data, please use the FPL ID or refine your query.`;
+            }).join('\n\n')}\n\nTo get specific player data, please use the FPL ID or refine your query.\n\nData timestamp: ${dataTimestamp}`;
             return { 
                 content: [{ type: 'text' as const, text: disambiguationText }],
                 isError: true
@@ -178,6 +184,22 @@ export async function getPlayer(
         })\nTeam: ${playerTeam?.name || 'Unknown Team'}\nPosition: ${
             foundPlayer!.position || 'N/A'
         }\nFPL ID: ${foundPlayer!.id}\n`;
+
+        // Add Status
+        let statusText = playerStatusMap[foundPlayer.status || ''] || foundPlayer.status || 'N/A';
+        if (foundPlayer.status === 'd') { // Doubtful
+            if (foundPlayer.chance_of_playing_next_round !== null && foundPlayer.chance_of_playing_next_round !== undefined) {
+                statusText = `Doubtful (${foundPlayer.chance_of_playing_next_round}% chance next GW)`;
+            } else if (foundPlayer.chance_of_playing_this_round !== null && foundPlayer.chance_of_playing_this_round !== undefined) {
+                 statusText = `Doubtful (${foundPlayer.chance_of_playing_this_round}% chance this GW)`;
+            }
+        }
+        responseText += `Status: ${statusText}\n`;
+
+        // Add News if available
+        if (foundPlayer.news && foundPlayer.news.trim() !== '') {
+            responseText += `News: ${foundPlayer.news.trim()}\n`;
+        }
 
         responseText += "\nKEY_STATS:\n";
         responseText += `- Selected by: ${foundPlayer!.selected_by_percent || 'N/A'}%\n`;
@@ -217,7 +239,7 @@ export async function getPlayer(
                     const opponentTeamId = fix.is_home ? fix.team_a : fix.team_h;
                     const opponentTeam = allTeams.find(t => t.id === opponentTeamId);
                     const venue = fix.is_home ? '(H)' : '(A)';
-                    return `- GW ${fix.event}: ${opponentTeam?.short_name || 'N/A'} ${venue} (Difficulty: ${fix.difficulty})`;
+                    return `- GW ${fix.event_name?.replace('Gameweek ', '') || fix.event}: ${opponentTeam?.short_name || 'N/A'} ${venue} (Difficulty: ${fix.difficulty})`;
                 }).join('\n');
             } else {
                 responseText += "- No upcoming fixtures listed for this player.\n";
@@ -258,20 +280,18 @@ export async function getPlayer(
 
         responseText += `\nData timestamp: ${dataTimestamp}`;
 
+        let rawDataToInclude: any = {};
         if (includeRawData) {
-            const rawData = {
-                player: {
-                    ...foundPlayer,
-                    team_name: playerTeam?.name || 'Unknown Team',
-                },
-                details: playerDetails, // Contains history and history_past
-            };
+            rawDataToInclude.player = foundPlayer;
+            if (playerDetails) {
+                rawDataToInclude.details = playerDetails;
+            }
             responseText +=
-                '\n\nRAW_DATA:\n' + JSON.stringify(rawData, null, 2);
+                '\n\nRAW_DATA:\n' + JSON.stringify(rawDataToInclude, null, 2);
         }
 
         return {
-            content: [{ type: 'text' as const, text: responseText }],
+            content: [{ type: 'text' as const, text: responseText.trim() }],
         };
     } catch (error) {
         console.error('Error in getPlayer tool:', error);

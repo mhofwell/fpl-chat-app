@@ -5,12 +5,10 @@ import { config } from './config';
 import mcpRouter from './routes/mcp';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from './tools';
-import { registerResources } from './resources';
-import { registerPrompts } from './prompts';
 import bodyParser from 'body-parser';
 
 const app = express();
-const port = config.port || 3001;
+const port = config.nextjsPort || 3001;
 
 // CORS middleware
 app.use(
@@ -66,8 +64,6 @@ export const createMcpServer = () => {
 
     // Register all components
     registerTools(server);
-    registerResources(server);
-    registerPrompts(server);
 
     return server;
 };

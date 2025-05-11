@@ -2,7 +2,7 @@
 import redis from '../../lib/redis/redis-client';
 import { Gameweek, Fixture, Team } from '../../../../../types/fpl-domain.types';
 
-// Helper for structured error response
+// Local helper for structured error response (or use shared one)
 function createGameweekErrorResponse(message: string, type: string = 'GENERIC_ERROR', suggestions?: string[]) {
     const dataTimestamp = new Date().toISOString();
     let text = `ERROR:\nType: ${type}\nMessage: ${message}`;
@@ -18,7 +18,7 @@ function createGameweekErrorResponse(message: string, type: string = 'GENERIC_ER
 
 interface GetGameweekParams {
     gameweekId?: number;
-    type?: 'current' | 'next' | 'previous'; // Added 'previous' to align with plan
+    type?: 'current' | 'next' | 'previous';
     includeFixtures?: boolean;
     includeRawData?: boolean;
 }
@@ -29,29 +29,21 @@ export async function getGameweek(
 ) {
     const {
         gameweekId,
-        type,
-        includeFixtures = false,
+        type, // Renamed from effectiveType for clarity
+        includeFixtures = true, // Defaulting to true as per Zod schema
         includeRawData = false,
     } = params;
     const dataTimestamp = new Date().toISOString();
 
-    // Determine actual type if aliases are used (e.g. map getCurrent to type='current')
-    let effectiveType = type;
-    // For backward compatibility with potential direct calls if getCurrentGameweek uses this:
-    if ((params as any).getCurrent) effectiveType = 'current';
-    if ((params as any).getNext) effectiveType = 'next';
-
-
     try {
-        // Parameter validation (simplified for now, can be expanded in Zod schema later)
-        if (gameweekId && effectiveType) {
+        if (gameweekId && type) {
             return createGameweekErrorResponse(
                 "Please provide either 'gameweekId' OR 'type', not both.",
                 'VALIDATION_ERROR',
                 ["Specify a gameweek by its ID, or use type: 'current', 'next', or 'previous'."]
             );
         }
-        if (!gameweekId && !effectiveType) {
+        if (!gameweekId && !type) {
              return createGameweekErrorResponse(
                 "You must specify a gameweek, e.g., by ID or by type ('current', 'next', 'previous').",
                 'VALIDATION_ERROR',
@@ -75,14 +67,13 @@ export async function getGameweek(
              currentGameweekIndex = allGameweeks.findIndex(gw => gw.is_current);
         }
 
-
         if (gameweekId) {
             targetGameweek = allGameweeks.find((gw) => gw.id === gameweekId);
             if (!targetGameweek) {
                 return createGameweekErrorResponse(`Gameweek with ID ${gameweekId} not found.`, 'NOT_FOUND', ['Please check the gameweek ID.']);
             }
-        } else if (effectiveType) {
-            switch (effectiveType) {
+        } else if (type) { // Use the 'type' from params directly
+            switch (type) {
                 case 'current':
                     targetGameweek = allGameweeks.find((gw) => gw.is_current);
                     if (!targetGameweek) return createGameweekErrorResponse('Current gameweek not found.', 'NOT_FOUND', ['The FPL season might not have started or is between gameweeks.']);
@@ -96,9 +87,7 @@ export async function getGameweek(
                         targetGameweek = allGameweeks[currentGameweekIndex - 1];
                     } else if (currentGameweekIndex === 0) {
                          return createGameweekErrorResponse('No previous gameweek available (currently on Gameweek 1).', 'NOT_FOUND');
-                    }
-                    else {
-                        // If no current gameweek, find the last finished one
+                    } else {
                         const finishedGameweeks = allGameweeks.filter(gw => gw.finished).sort((a, b) => b.id - a.id);
                         if (finishedGameweeks.length > 0) {
                             targetGameweek = finishedGameweeks[0];
@@ -107,49 +96,66 @@ export async function getGameweek(
                         }
                     }
                     break;
+                // Default case for invalid type is handled by Zod schema, but defensive check is fine
                 default:
-                    return createGameweekErrorResponse(`Invalid gameweek type specified: ${effectiveType}.`, 'VALIDATION_ERROR');
+                    return createGameweekErrorResponse(`Invalid gameweek type specified: ${type}.`, 'VALIDATION_ERROR');
             }
-             if (!targetGameweek) { // Should be caught by specific cases, but as a fallback
-                return createGameweekErrorResponse(`Could not determine gameweek for type: ${effectiveType}.`, 'NOT_FOUND');
+             if (!targetGameweek) {
+                return createGameweekErrorResponse(`Could not determine gameweek for type: ${type}.`, 'NOT_FOUND');
             }
-        } else {
-             // This case should ideally be prevented by Zod schema requiring one identifier
-            return createGameweekErrorResponse("No gameweek identifier (ID or type) provided.", "VALIDATION_ERROR");
+        }
+
+        if (!targetGameweek) {
+            console.error("Error in getGameweek: targetGameweek is unexpectedly undefined after initial checks.");
+            return createGameweekErrorResponse(
+                "Could not determine the target gameweek due to an unexpected internal error.",
+                'INTERNAL_ERROR'
+            );
         }
 
         let responseText = "GAMEWEEK_INFO:\n";
         const deadline = new Date(targetGameweek.deadline_time);
         const formattedDeadline = deadline.toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' });
-        
+
         let status = targetGameweek.is_current ? 'Current' :
                      targetGameweek.is_next ? 'Next' :
                      targetGameweek.finished ? 'Finished' : 'Upcoming';
 
-        responseText += `Name: ${targetGameweek.name}\n`;
+        responseText += `Name: ${targetGameweek.name} (ID: ${targetGameweek.id})\n`; // Added ID for clarity
         responseText += `Status: ${status}\n`;
         responseText += `Deadline: ${formattedDeadline}\n`;
         responseText += `Finished: ${targetGameweek.finished ? 'Yes' : 'No'}\n`;
+        // Consider adding Average Score, Highest Score if available on Gameweek type and deemed useful
+        // responseText += `Average Score: ${targetGameweek.average_entry_score ?? 'N/A'}\n`;
+        // responseText += `Highest Score: ${targetGameweek.highest_score ?? 'N/A'}\n`;
 
         let rawDataForOutput: any = { gameweek: targetGameweek };
 
         if (includeFixtures) {
             responseText += "\nFIXTURES:\n";
             const fixturesData = await redis.get('fpl:fixtures');
-            const teamsData = await redis.get('fpl:teams'); // For team names
+            const teamsData = await redis.get('fpl:teams');
 
             if (fixturesData && teamsData) {
                 const allFixtures: Fixture[] = JSON.parse(fixturesData);
                 const allTeams: Team[] = JSON.parse(teamsData);
-                const gameweekFixtures = allFixtures.filter(f => f.gameweek_id === targetGameweek?.id);
+                const gameweekFixtures = allFixtures
+                    .filter(f => f.gameweek_id === targetGameweek?.id)
+                    .sort((a,b) => new Date(a.kickoff_time || 0).getTime() - new Date(b.kickoff_time || 0).getTime());
+
 
                 if (gameweekFixtures.length > 0) {
                     gameweekFixtures.forEach(fixture => {
-                        const homeTeam = allTeams.find(t => t.id === fixture.home_team_id)?.short_name || `Team ${fixture.home_team_id}`;
-                        const awayTeam = allTeams.find(t => t.id === fixture.away_team_id)?.short_name || `Team ${fixture.away_team_id}`;
-                        const kickoff = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : 'TBD';
-                        // Later: Add difficulty, key match indicators
-                        responseText += `- ${homeTeam} vs ${awayTeam} (${kickoff})\n`;
+                        const homeTeam = allTeams.find(t => t.id === fixture.home_team_id);
+                        const awayTeam = allTeams.find(t => t.id === fixture.away_team_id);
+                        const kickoff = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleString('en-GB', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'TBD';
+                        
+                        let score = "";
+                        if (fixture.finished && typeof fixture.team_h_score === 'number' && typeof fixture.team_a_score === 'number') {
+                            score = ` ${fixture.team_h_score} - ${fixture.team_a_score} `;
+                        }
+
+                        responseText += `- ${homeTeam?.short_name || `Team ${fixture.home_team_id}`} (H) [Diff: ${fixture.team_h_difficulty ?? 'N/A'}]${score}vs ${awayTeam?.short_name || `Team ${fixture.away_team_id}`} (A) [Diff: ${fixture.team_a_difficulty ?? 'N/A'}] (${kickoff})\n`;
                     });
                     rawDataForOutput.fixtures = gameweekFixtures;
                 } else {
@@ -167,22 +173,15 @@ export async function getGameweek(
         }
 
         return {
-            content: [{ type: 'text' as const, text: responseText }],
+            content: [{ type: 'text' as const, text: responseText.trim() }],
         };
 
     } catch (error) {
         console.error('Error in getGameweek tool:', error);
         const err = error as Error;
-        return createGameweekErrorResponse(
+        return createGameweekErrorResponse( // Or use shared createStructuredErrorResponse
             err.message || 'An unknown error occurred while fetching gameweek data.',
             'TOOL_EXECUTION_ERROR'
         );
     }
-}
-
-// Keep this for now if it's directly used by the current registration,
-// but we aim to move to a single get-gameweek tool registration.
-export async function getCurrentGameweek(_args: {}, _extra: any) {
-    // Cast _args to GetGameweekParams and set type
-    return getGameweek({ type: 'current' } as GetGameweekParams, _extra);
 }
