@@ -30,23 +30,30 @@ async function seedDatabase() {
         const teams: Team[] = await fplApiService.getTeams();
         const players: Player[] = await fplApiService.getPlayers();
         const gameweeks: Gameweek[] = await fplApiService.getGameweeks();
-        const fplFixtures = await fplApiService.getFixtures();
+        const fplFixturesApi = await fplApiService.getFixtures();
 
         // Convert FplFixture[] to Fixture[]
-        const fixtures: Fixture[] = fplFixtures.map((fixture) => ({
+        const fixturesDbObjects = fplFixturesApi.map((fixture) => ({
             id: fixture.id,
-            gameweek_id: fixture.event ?? 0,
+            code: fixture.code,
+            gameweek_id: fixture.event,
             home_team_id: fixture.team_h,
             away_team_id: fixture.team_a,
-            kickoff_time: fixture.kickoff_time ?? '',
+            kickoff_time: fixture.kickoff_time,
             finished: fixture.finished,
+            finished_provisional: fixture.finished_provisional,
+            started: fixture.started,
+            minutes: fixture.minutes,
             team_h_score: fixture.team_h_score,
             team_a_score: fixture.team_a_score,
+            team_h_difficulty: fixture.team_h_difficulty,
+            team_a_difficulty: fixture.team_a_difficulty,
+            pulse_id: fixture.pulse_id,
             last_updated: new Date().toISOString(),
         }));
 
         console.log(
-            `Fetched ${teams.length} teams, ${players.length} players, ${gameweeks.length} gameweeks, and ${fixtures.length} fixtures.`
+            `Fetched ${teams.length} teams, ${players.length} players, ${gameweeks.length} gameweeks, and ${fixturesDbObjects.length} fixtures.`
         );
 
         // Step 2: Insert or update teams
@@ -56,6 +63,22 @@ async function seedDatabase() {
                 id: team.id,
                 name: team.name,
                 short_name: team.short_name,
+                code: team.code,
+                played: team.played,
+                form: team.form,
+                loss: team.loss,
+                points: team.points,
+                position: team.position,
+                strength: team.strength,
+                unavailable: team.unavailable,
+                win: team.win,
+                strength_overall_home: team.strength_overall_home,
+                strength_overall_away: team.strength_overall_away,
+                strength_attack_home: team.strength_attack_home,
+                strength_attack_away: team.strength_attack_away,
+                strength_defence_home: team.strength_defence_home,
+                strength_defence_away: team.strength_defence_away,
+                pulse_id: team.pulse_id,
                 last_updated: new Date().toISOString(),
             });
             if (error) {
@@ -73,6 +96,11 @@ async function seedDatabase() {
                 is_current: gameweek.is_current,
                 is_next: gameweek.is_next,
                 finished: gameweek.finished,
+                data_checked: gameweek.data_checked,
+                is_previous: gameweek.is_previous,
+                average_entry_score: gameweek.average_entry_score,
+                highest_score: gameweek.highest_score,
+                is_player_stats_synced: false,
                 last_updated: new Date().toISOString(),
             });
             if (error) {
@@ -90,7 +118,10 @@ async function seedDatabase() {
                 id: player.id,
                 web_name: player.web_name,
                 full_name: player.full_name,
+                first_name: player.first_name,
+                second_name: player.second_name,
                 team_id: player.team_id,
+                element_type: player.element_type,
                 position: player.position,
                 last_updated: new Date().toISOString(),
             }));
@@ -111,25 +142,8 @@ async function seedDatabase() {
 
         // Step 5: Insert or update fixtures (in batches)
         console.log('Seeding fixtures table...');
-        for (let i = 0; i < fixtures.length; i += BATCH_SIZE) {
-            const batch = fixtures.slice(i, i + BATCH_SIZE).map((fixture) => ({
-                id: fixture.id,
-                gameweek_id: fixture.gameweek_id || fixture.event,
-                home_team_id: fixture.home_team_id || fixture.team_h,
-                away_team_id: fixture.away_team_id || fixture.team_a,
-                kickoff_time: fixture.kickoff_time,
-                finished: fixture.finished,
-                // Add scores for finished fixtures if available
-                team_h_score:
-                    fixture.finished && 'team_h_score' in fixture
-                        ? fixture.team_h_score
-                        : null,
-                team_a_score:
-                    fixture.finished && 'team_a_score' in fixture
-                        ? fixture.team_a_score
-                        : null,
-                last_updated: new Date().toISOString(),
-            }));
+        for (let i = 0; i < fixturesDbObjects.length; i += BATCH_SIZE) {
+            const batch = fixturesDbObjects.slice(i, i + BATCH_SIZE);
             const { error } = await supabase.from('fixtures').upsert(batch);
             if (error) {
                 console.error(
@@ -138,7 +152,7 @@ async function seedDatabase() {
                 );
             } else {
                 console.log(
-                    `Inserted fixture batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(fixtures.length / BATCH_SIZE)}`
+                    `Inserted fixture batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(fixturesDbObjects.length / BATCH_SIZE)}`
                 );
             }
             // Add a small delay to avoid overwhelming the database
@@ -185,6 +199,11 @@ async function seedDatabase() {
                                 red_cards: stats.red_cards || 0,
                                 saves: stats.saves || 0,
                                 bonus: stats.bonus || 0,
+                                bps: stats.bps || 0,
+                                influence: parseFloat(stats.influence || '0.0').toFixed(1),
+                                creativity: parseFloat(stats.creativity || '0.0').toFixed(1),
+                                threat: parseFloat(stats.threat || '0.0').toFixed(1),
+                                ict_index: parseFloat(stats.ict_index || '0.0').toFixed(1),
                                 total_points: stats.total_points || 0,
                                 created_at: new Date().toISOString(),
                             });
@@ -262,15 +281,31 @@ async function seedDatabase() {
                             .upsert(
                                 {
                                     player_id: playerId,
-                                    season: season.season_name,
+                                    season_name: season.season_name,
+                                    element_code: season.element_code,
+                                    start_cost: season.start_cost,
+                                    end_cost: season.end_cost,
                                     minutes: season.minutes || 0,
                                     goals_scored: season.goals_scored || 0,
                                     assists: season.assists || 0,
                                     clean_sheets: season.clean_sheets || 0,
+                                    goals_conceded: season.goals_conceded || 0,
+                                    own_goals: season.own_goals || 0,
+                                    penalties_saved: season.penalties_saved || 0,
+                                    penalties_missed: season.penalties_missed || 0,
+                                    yellow_cards: season.yellow_cards || 0,
+                                    red_cards: season.red_cards || 0,
+                                    saves: season.saves || 0,
+                                    bonus: season.bonus || 0,
+                                    bps: season.bps || 0,
+                                    influence: season.influence,
+                                    creativity: season.creativity,
+                                    threat: season.threat,
+                                    ict_index: season.ict_index,
                                     total_points: season.total_points || 0,
                                     created_at: new Date().toISOString(),
                                 },
-                                { onConflict: 'player_id, season' }
+                                { onConflict: 'player_id, season_name' }
                             );
 
                         if (error) {

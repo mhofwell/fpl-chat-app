@@ -91,6 +91,21 @@ export interface Player {
     dreamteam_count?: number;
 
     last_updated?: string;
+
+    current_season_performance: PlayerGameweekHistoryPoint[];
+    previous_season_summary: PlayerSeasonSummaryStats | null;
+}
+
+export interface PlayerSeasonSummaryStats {
+    season_name: string;
+    total_points: number;
+    minutes: number;
+}
+
+export interface PlayerGameweekHistoryPoint {
+    gameweek: number;
+    points: number;
+    minutes: number;
 }
 
 export interface Gameweek {

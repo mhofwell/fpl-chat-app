@@ -109,19 +109,21 @@ export interface FplFixtureStat {
 
 export interface FplFixture {
     id: number;
-    code: number; // A unique code for the fixture
-    event: number | null; // Gameweek ID
+    code: number;
+    event: number | null;
     finished: boolean;
+    finished_provisional?: boolean;
     kickoff_time: string | null;
-    minutes: number; // Minutes played in the match (0 if not started, 90 if finished typically)
+    minutes: number;
     started: boolean;
-    team_a: number; // Away team ID
+    team_a: number;
     team_a_score: number | null;
-    team_h: number; // Home team ID
+    team_h: number;
     team_h_score: number | null;
     team_h_difficulty: number;
     team_a_difficulty: number;
     stats: FplFixtureStat[];
+    pulse_id?: number;
 }
 
 export interface BootstrapStaticResponse {
@@ -157,6 +159,7 @@ export interface PlayerHistory { // Stats for a player in a specific past fixtur
     ict_index: string;
     value: number; // Player's cost at the time of this fixture (x10)
     selected?: number; // Number of managers who selected this player for this gameweek
+    round: number;
 }
 
 export interface PlayerHistoryPast { // Summary stats for a player in a past season

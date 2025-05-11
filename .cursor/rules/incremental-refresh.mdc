@@ -1,0 +1,30 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+The current hourly-refresh calling performRegularRefresh() is too broad and not aligned with an "incremental" approach. The new performIncrementalRefresh() method (which should be called by the /api/cron/sync-fpl/hourly endpoint when refreshType is 'incremental') should align as follows:
+Primary Goal for performIncrementalRefresh (Hourly):
+Keep bootstrap-static derived data fresh: The main aim should be to check for updates to bootstrap-static.
+If bootstrap-static has new data:
+The raw fpl:bootstrap-static Redis cache should be updated.
+fpl-data-sync.ts must be called to update the PostgreSQL tables: teams, players (basic info), and gameweeks.
+Crucially, the fpl:players:enriched* Redis cache must be invalidated. This ensures that the next call to getPlayers() in service.ts rebuilds the enriched list using the newly updated basic player/team data from PostgreSQL.
+This refresh should be relatively lightweight if bootstrap-static hasn't changed.
+What performIncrementalRefresh Should Not Typically Do (unless context from getJobContext specifically dictates otherwise for a particular hour):
+It should not routinely run the full performLiveRefresh logic (fetching all live event data).
+It should not routinely run the full performPostMatchRefresh logic (fetching all fixtures).
+The getJobContext already provides isMatchDay. If the goal is for the hourly job to trigger live-like updates on match days, then the /api/cron/sync-fpl/hourly endpoint could decide to call refreshManager.performLiveRefresh() instead of performIncrementalRefresh() when isMatchDay is true and refreshType is 'incremental'. This would make the "hourly" job adapt its behavior.
+Ensuring Full Strategy Coverage by Other Refreshes:
+performPreDeadlineRefresh:
+Besides updating bootstrap-static in Redis, it must ensure fpl-data-sync.ts is called to update the teams, players (basic), and gameweeks tables in PostgreSQL.
+It must also ensure fpl:players:enriched* is invalidated if bootstrap-static changed.
+performPostMatchRefresh:
+Besides updating fixtures/ data in Redis, it must ensure fpl-data-sync.ts is called to update the fixtures table in PostgreSQL.
+It also handles final player_gameweek_stats updates via fpl-data-sync.ts, which correctly invalidates fpl:players:enriched*.
+In summary:
+The refresh jobs, once the hourly-refresh is adjusted to truly be "incremental" and focused as described above, cover the dynamic aspects of the data-enrichment-strategy well. The main dependencies are:
+Correct definition and implementation of performIncrementalRefresh() in refreshManager.ts.
+The /api/cron/sync-fpl/hourly/route.ts handler correctly calling performIncrementalRefresh() (or adapting based on isMatchDay) based on the refreshType.
+Ensuring that refreshManager methods (performPreDeadlineRefresh, performIncrementalRefresh if it handles bootstrap) reliably trigger fpl-data-sync.ts for updating the relevant PostgreSQL tables derived from bootstrap-static and fixtures API data.
+Ensuring the fpl:players:enriched* invalidation path upon bootstrap-static change is solid, whether triggered by fpl-data-sync.ts or directly by the refreshManager method that detects the change.

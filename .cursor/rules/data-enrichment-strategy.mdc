@@ -1,0 +1,66 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+PostgreSQL (Supabase) Database:
+
+teams: Core team info.
+Source: FPL API (bootstrap-static). Updated by: fpl-data-sync.ts.
+
+players (Basic): Core player static info (ID, name, team, position).
+Source: FPL API (bootstrap-static). Updated by: fpl-data-sync.ts.
+
+gameweeks: GW info, deadlines, status (includes is_player_stats_synced flag).
+Source: FPL API (bootstrap-static). Updated by: fpl-data-sync.ts.
+
+fixtures: Match details, scores.
+Source: FPL API (fixtures/). Updated by: fpl-data-sync.ts.
+
+player_gameweek_stats (Current Season Detail): Per-gameweek stats (points, goals, minutes, etc.) for all players for the current FPL season.
+Source: FPL API (event/{gw_id}/live/) for newly completed gameweeks.
+Updated by: fpl-data-sync.ts (proactively after each GW). Initial historical backfill by seed-database.ts. Also updated/verified for specific players by service.ts if their element-summary/ is fetched on-demand.
+
+player_season_stats (Past Seasons Summaries): Summary stats (total points, goals, etc.) for each player for all their available past FPL seasons.
+Source: FPL API (element-summary/{player_id}/history_past).
+Populated by: On-demand by service.ts when a user query necessitates fetching a player's deep history for the first time (triggered by getPlayerDetail). seed-database.ts does not proactively fill this for all players.
+
+Redis Cache:
+Raw API Responses (e.g., fpl:bootstrap-static, fpl:fixtures:all):
+Content: Direct JSON from FPL API.
+Fetch/Update: By service.ts on its first call for this data per TTL period. Short TTL.
+Processed Lists (e.g., fpl:teams, fpl:gameweeks, fpl:fixtures):
+Content: Arrays of our domain objects (e.g., Team[]).
+Fetch/Update: By service.ts methods (e.g., getTeams()), derived from raw API caches. Invalidated when raw sources change.
+fpl:player:{id}:detail (Specific Player Raw Full History):
+Content: Raw JSON from FPL API element-summary/{player_id}/ (includes their history and history_past).
+Fetch/Update: On-demand by service.ts (getPlayerDetail()) when a tool/user query needs deep historical data for a player not yet fetched. Longer TTL (e.g., 1 day/1 week).
+fpl:players (Enriched Player List - Key Cache for Tools):
+Content: Array of Player domain objects, each containing:
+Core info (name, team, position, current FPL form, current season total points, etc.).
+current_season_performance: PlayerGameweekHistoryPoint[] (ALL per-GW stats for the current season).
+previous_season_summary: PlayerSeasonSummaryStats (summary for the single most recent past season).
+Fetch/Update: By service.ts (getPlayers()). This function:
+Gets base data from fpl:bootstrap-static.
+For each player, queries PostgreSQL player_gameweek_stats to populate current_season_performance.
+For each player, queries PostgreSQL player_season_stats to populate previous_season_summary (this query to player_season_stats might trigger the on-demand API fetch via getPlayerDetail if that player's past seasons aren't yet in the DB).
+Invalidation: When bootstrap-static changes OR when player_gameweek_stats in PostgreSQL is updated by fpl-data-sync.ts.
+This layered approach ensures that:
+Your database is the ultimate, comprehensive historical record.
+player_gameweek_stats for the current season are kept fresh efficiently.
+player_season_stats (deep history) are populated efficiently on user demand without overwhelming the FPL API upfront.
+The fpl:players Redis cache provides tools with a rich, pre-joined dataset for most common queries, balancing data richness with performance.
+This is a robust and scalable data strategy.
+
+
+
+In short:
+The "full player history fetch" (getPlayerDetail()) gets all past seasons (history_past) and all current season gameweeks (history).
+When this data is processed on-demand:
+All history_past entries go into your player_season_stats table. This naturally includes the player's "last active season" if that season was a past, completed season.
+All history (current season) entries go into your player_gameweek_stats table.
+The Player object in the fpl:players Redis cache specifically aims to embed:
+All per-gameweek details for the current season (current_season_performance).
+A summary of the single immediately previous FPL season (previous_season_summary).
+This means you will capture the data for a player's last active season. If their last active season was the FPL season immediately prior to the current one, it will be readily available in player.previous_season_summary in the Redis cache. If their last active season was further back, that data will be in your player_season_stats table, fetchable by tools when a user asks for that deeper history.
+This seems to cover all bases well. Ready to proceed with implementation thoughts?
