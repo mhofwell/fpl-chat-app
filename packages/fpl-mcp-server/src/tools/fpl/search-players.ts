@@ -1,5 +1,5 @@
 import redis from '../../lib/redis/redis-client';
-import { Player, Team } from '../../../../../types/fpl-domain.types';
+import { Player, Team } from 'fpl-domain.types';
 import { fuzzyMatch, findAndDisambiguateTeams } from '../../lib/utils/text-helpers';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 

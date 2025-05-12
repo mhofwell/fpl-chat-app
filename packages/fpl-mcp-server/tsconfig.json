@@ -15,22 +15,26 @@
     /* Source Directories - Use rootDirs */
     "rootDirs": [
       "./src",        // Your primary source code for this package
-      "../../types"   // Path to the shared types directory relative to this tsconfig.json
-                      // Adjust if your shared types live elsewhere (e.g., "../types")
+      "../../types"   // Path to the shared monorepo types directory
+                      // (e.g., MONOREPO_ROOT/types/).
+                      // Adjust this relative path if your shared types are elsewhere.
     ],
 
     /* Path Aliases */
-    "baseUrl": ".", // Base directory for path resolution (package root)
+    "baseUrl": ".", // Sets the base for module resolution to the current package directory (packages/fpl-mcp-server/)
     "paths": {
-      "@/*": ["src/*"], // Alias for files within this package's src folder
-      "@types/*": ["../../types/*"] // Alias for shared types in the monorepo root
+      "@/*": ["./src/*"], // Alias for local src files (e.g., @/lib/utils)
+      "fpl-domain.types": ["../../types/fpl-domain.types.ts"],
+      "fpl-api.types": ["../../types/fpl-api.types.ts"]
     }
   },
   "include": [
-    "src/**/*.ts" // Include all TypeScript files within the src directory
+    "src/**/*.ts" // Only compile .ts files from the src directory of this package
   ],
   "exclude": [
     "node_modules", // Exclude node_modules
-    "dist"          // Exclude the output directory itself
+    "dist",          // Exclude the output directory itself
+    "types"         // **Crucially, exclude the local 'types' directory from this compilation**
+                    // to prevent it from interfering with the @types/* aliases meant for shared types.
   ]
 }
