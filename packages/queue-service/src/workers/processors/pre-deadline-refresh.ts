@@ -5,7 +5,7 @@ import { getJobContext } from '../../lib/context-provider'; // Assuming this pat
 
 export async function preDeadlineRefreshProcessor(job: Job) {
     try {
-        const originalJobData = { ...job.data };
+        const originalJobData = { ...(job.data || {}) };
 
         console.log(`[JOB-INFO] Job ${job.id} in ${job.name}. Fetching full context from provider...`);
         // For pre-deadline, specific context fetching might not be as critical as the API endpoint itself checks the window.
@@ -96,9 +96,10 @@ export async function preDeadlineRefreshProcessor(job: Job) {
         return enhancedResult;
 
     } catch (error) {
-        console.error(`[JOB-ERROR] Error in ${job.name || 'pre-deadline-refresh'} processor for job ${job.id}:`, {
+        const queueName = job.name || 'pre-deadline-refresh'; // Use job.name as fallback
+        console.error(`[JOB-ERROR] Error in ${queueName} processor for job ${job.id}:`, {
             error: error instanceof Error ? error.message : 'Unknown error',
-            jobData: job.data,
+            jobData: job.data || {}, // Log original data or empty object
             timestamp: new Date().toISOString()
         });
         throw error;
