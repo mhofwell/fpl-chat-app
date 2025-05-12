@@ -81,19 +81,22 @@ export interface FplEvent {
     id: number; // Gameweek ID
     name: string; // e.g. "Gameweek 1"
     deadline_time: string;
-    is_current: boolean;
-    is_next: boolean;
+    average_entry_score?: number; // Added from schema
     finished: boolean;
     data_checked: boolean;
-    highest_scoring_entry: number | null;
-    most_selected: number | null; // Player ID
-    most_transferred_in: number | null; // Player ID
-    top_element: number | null; // Player ID of top scoring player this GW
-    top_element_info: {
+    highest_scoring_entry?: number | null; // Made optional as per schema (null)
+    deadline_time_epoch?: number; // Added from schema
+    is_previous: boolean; // Added
+    is_current: boolean;
+    is_next: boolean;
+    most_selected?: number | null; // Player ID, made optional
+    most_transferred_in?: number | null; // Player ID, made optional
+    top_element?: number | null; // Player ID of top scoring player this GW, made optional
+    top_element_info?: { // Made optional
         id: number;
         points: number;
     } | null;
-    most_captained: number | null; // Player ID
+    most_captained?: number | null; // Player ID, made optional
 }
 
 export interface FplFixtureStatValue {
