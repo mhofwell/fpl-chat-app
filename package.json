@@ -22,5 +22,8 @@
   "bugs": {
     "url": "https://github.com/mhofwell/fpl-chat-app/issues"
   },
-  "homepage": "https://github.com/mhofwell/fpl-chat-app#readme"
+  "homepage": "https://github.com/mhofwell/fpl-chat-app#readme",
+  "dependencies": {
+    "ts-node": "^10.9.2"
+  }
 }
