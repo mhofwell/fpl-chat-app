@@ -2,6 +2,7 @@ import { Job } from 'bullmq';
 import fetch from 'node-fetch';
 import { config } from '../../config';
 import { getJobContext } from '../../lib/context-provider';
+import { getQueue } from '../../queues';
 
 export async function hourlyRefreshProcessor(job: Job) {
     try {
@@ -90,6 +91,26 @@ export async function hourlyRefreshProcessor(job: Job) {
         };
         
         console.log(`[JOB-COMPLETE] ${queueName} job ${job.id} completed:`, enhancedResult);
+
+        // Handle successful completion: Re-schedule if it's a repeatable job
+        const repeatOpts = job.opts.repeat; // Access the repeat options directly
+        if (repeatOpts) {
+            console.log(`Hourly refresh job completed. Re-scheduling based on cron: ${repeatOpts.cron}`);
+            const hourlyRefreshQueue = getQueue('hourly-refresh'); // Get the queue instance
+            if (hourlyRefreshQueue) { // Check if the queue was found
+                await hourlyRefreshQueue.add(
+                    job.name, // Use the original job name
+                    { ...(job.data ?? {}) }, // Safely spread job.data, default to {} if null/undefined
+                    { // Construct the options object for the next job run
+                        jobId: job.id, // Re-use original ID for singleton if applicable
+                        repeat: repeatOpts // Pass the original repeat options object
+                    }
+                );
+            } else {
+               console.error('Failed to get hourly-refresh queue for rescheduling.');
+            }
+        }
+
         return enhancedResult;
 
     } catch (error) {
