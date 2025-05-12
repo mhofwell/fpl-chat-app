@@ -1,7 +1,7 @@
 // src/tools/fpl/player.ts
 import redis from '../../lib/redis/redis-client';
 import { Player, Team as FplTeamType } from 'fpl-domain.types';
-import { PlayerDetailResponse } from 'fpl-api.types';
+import { PlayerDetailResponse, PlayerGameweekHistory, PlayerFixture } from 'fpl-api.types';
 import { fuzzyMatch } from '../../lib/utils/text-helpers';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 
@@ -165,8 +165,8 @@ export async function getPlayer(
         }
         
         const foundPlayer = potentialPlayers[0];
-        const playerTeam = allTeams.find(
-            (t: any) => t.id === foundPlayer!.team_id
+        const playerTeam: FplTeamType | undefined = allTeams.find(
+            (t: FplTeamType) => t.id === foundPlayer!.team_id
         );
 
         // Get detailed player information (current season gameweek history, past seasons)
@@ -215,7 +215,7 @@ export async function getPlayer(
             let cleanSheets = 0;
             let bonusPoints = 0;
             
-            currentSeasonHistory.forEach(gwStat => {
+            currentSeasonHistory.forEach((gwStat: PlayerGameweekHistory) => {
                 goals += gwStat.goals_scored;
                 assists += gwStat.assists;
                 minutes += gwStat.minutes;
@@ -235,7 +235,7 @@ export async function getPlayer(
         if (playerDetails?.fixtures && playerDetails.fixtures.length > 0) {
             const nextFixturesToDisplay = playerDetails.fixtures.slice(0, 3); 
             if (nextFixturesToDisplay.length > 0) {
-                responseText += nextFixturesToDisplay.map(fix => {
+                responseText += nextFixturesToDisplay.map((fix: PlayerFixture) => {
                     const opponentTeamId = fix.is_home ? fix.team_a : fix.team_h;
                     const opponentTeam = allTeams.find(t => t.id === opponentTeamId);
                     const venue = fix.is_home ? '(H)' : '(A)';
@@ -259,7 +259,7 @@ export async function getPlayer(
         }
         if (playerDetails?.history && playerDetails.history.length > 0) {
             const recentHistory = playerDetails.history.slice(-5); 
-            const recentPoints = recentHistory.reduce((sum, gw) => sum + gw.total_points, 0);
+            const recentPoints = recentHistory.reduce((sum: number, gw: PlayerGameweekHistory) => sum + gw.total_points, 0);
             const averageRecentPoints = recentHistory.length > 0 ? recentPoints / recentHistory.length : 0;
             if (averageRecentPoints > 5) {
                  responseText += "- In good recent form (avg " + averageRecentPoints.toFixed(1) + " pts over last " + recentHistory.length + " GWs).\n";
