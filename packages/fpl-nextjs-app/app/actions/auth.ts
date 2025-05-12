@@ -7,19 +7,21 @@ import { updateUserProfile } from '@/utils/supabase/database';
 
 // Helper function to get the appropriate origin based on environment
 const getOrigin = () => {
-    // Check if we're in development mode based on APP_ENV
-    const isDevelopment =
-        (process.env.APP_ENV || 'development') === 'development';
+    const appEnv = process.env.APP_ENV || 'development'; // Default to 'development'
+    const isDevelopment = appEnv === 'development';
 
-    // Use NEXT_PUBLIC_URL if explicitly set
-    if (process.env.NEXT_PUBLIC_URL) {
-        return process.env.NEXT_PUBLIC_URL;
+    if (isDevelopment) {
+        return 'http://localhost:3000';
     }
 
-    // Otherwise, use environment-specific defaults
-    return isDevelopment
-        ? 'http://localhost:3000' // Local development URL
-        : `https://${process.env.NEXT_PUBLIC_URL}`; // Production URL
+    const publicUrl = `https://${process.env.NEXT_PUBLIC_URL}`;
+
+    if (!publicUrl) {
+        console.error("Error: NEXT_PUBLIC_URL is not set for a non-development environment.");
+        return 'https://fallback-url.com'; // Or throw an error
+    }
+
+    return publicUrl;
 };
 
 export const signUpAction = async (formData: FormData) => {
