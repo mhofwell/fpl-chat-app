@@ -1,6 +1,6 @@
 // src/tools/fpl/gameweek.ts
 import redis from '../../lib/redis/redis-client';
-import { Gameweek, Fixture, Team } from 'fpl-domain.types';
+import { Gameweek, Fixture, Team } from '@fpl-chat-app/types';
 
 // Local helper for structured error response (or use shared one)
 function createGameweekErrorResponse(message: string, type: string = 'GENERIC_ERROR', suggestions?: string[]) {

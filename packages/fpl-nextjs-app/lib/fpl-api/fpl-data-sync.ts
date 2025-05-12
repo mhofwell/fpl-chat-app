@@ -1,10 +1,10 @@
 // lib/jobs/fpl-data-sync.ts
 import { fplApiService } from './service';
 import { createClient } from '@/utils/supabase/server';
-import { Team, Player, Gameweek, Fixture } from 'fpl-domain.types';
+import { Team, Player, Gameweek, Fixture } from '@fpl-chat-app/types';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { cacheInvalidator } from './cache-invalidator';
-import { FplElement, FplEvent, FplTeam, BootstrapStaticResponse } from 'fpl-api.types';
+import { FplElement, FplEvent, FplTeam, BootstrapStaticResponse } from '@fpl-chat-app/types';
 
 // Maximum items per batch for efficient database operations
 const BATCH_SIZE = 50;

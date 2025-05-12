@@ -1,5 +1,5 @@
-interface StructuredErrorResponse {
-    content: [{ type: 'text'; text: string }];
+export interface StructuredErrorResponse {
+    content: { type: 'text'; text: string }[];
     isError: true;
 }
 
@@ -24,15 +24,9 @@ export function createStructuredErrorResponse(
 
     text += `\n\nData timestamp: ${dataTimestamp}`;
 
-    return {
+    const response = {
         content: [{ type: 'text' as const, text }], // 'text' as const ensures literal type
-        isError: true,
+        isError: true as const, // Use 'as const' if isError must be literal true
     };
+    return response;
 }
-
-// Optional: Helper for DISAMBIGUATION_REQUIRED responses if a common pattern emerges beyond a simple message
-// For now, disambiguation messages are usually custom-built in the tools.
-
-// Optional: Helper for successful responses if there's truly common boilerplate
-// export function createSuccessResponse(mainHeaderText: string, bodyText: string, rawData?: any, includeRawDataFlag?: boolean) { ... }
-// However, success responses are often too unique.

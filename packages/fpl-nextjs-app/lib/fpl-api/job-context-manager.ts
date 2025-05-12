@@ -1,5 +1,5 @@
 import { fplApiService } from './service';
-import { FplFixture } from 'fpl-api.types'; // Correct path
+import { FplFixture } from '@fpl-chat-app/types'; // Correct path
 
 export interface JobContext {
     isMatchDay: boolean;
