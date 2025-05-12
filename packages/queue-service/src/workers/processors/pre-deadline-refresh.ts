@@ -72,7 +72,8 @@ export async function preDeadlineRefreshProcessor(job: Job) {
             throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorText}`);
         }
 
-        const result = await response.json();
+        const resultData = await response.json();
+        const result = (typeof resultData === 'object' && resultData !== null) ? resultData : {};
         
         const enhancedResult = {
             ...result,

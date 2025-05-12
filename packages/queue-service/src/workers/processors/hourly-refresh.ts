@@ -69,7 +69,8 @@ export async function hourlyRefreshProcessor(job: Job) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
-        const result = await response.json();
+        const resultData = await response.json();
+        const result = (typeof resultData === 'object' && resultData !== null) ? resultData : {};
         
         const enhancedResult = {
             ...result,

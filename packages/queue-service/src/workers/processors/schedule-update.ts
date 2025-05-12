@@ -70,7 +70,8 @@ export async function scheduleUpdateProcessor(job: Job) {
             throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorBody}`);
         }
 
-        const result = await response.json();
+        const resultData = await response.json();
+        const result = (typeof resultData === 'object' && resultData !== null) ? resultData : {};
         
         const enhancedResult = {
             ...result, 
