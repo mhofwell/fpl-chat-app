@@ -79,7 +79,9 @@ export async function dailyRefreshProcessor(job: Job) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
-        const result = await response.json();
+        const resultData = await response.json();
+        // Ensure result is an object before spreading, default to empty object if not
+        const result = (typeof resultData === 'object' && resultData !== null) ? resultData : {};
         
         const enhancedResult = {
             ...result,
