@@ -1,5 +1,5 @@
 {
-    "name": "express-typescript-api",
+    "name": "fpl-mcp-server",
     "version": "1.0.0",
     "description": "A blank Express server with TypeScript",
     "main": "dist/server.js",
