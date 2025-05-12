@@ -19,7 +19,7 @@ const getOrigin = () => {
     // Otherwise, use environment-specific defaults
     return isDevelopment
         ? 'http://localhost:3000' // Local development URL
-        : 'https://fpl-mcp-chat-production.up.railway.app'; // Production URL
+        : process.env.NEXT_PUBLIC_URL; // Production URL
 };
 
 export const signUpAction = async (formData: FormData) => {
