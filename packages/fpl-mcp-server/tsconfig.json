@@ -12,14 +12,6 @@
     /* Output Directory */
     "outDir": "./dist", // Output compiled JS to the 'dist' folder
 
-    /* Source Directories - Use rootDirs */
-    "rootDirs": [
-      "./src",        // Your primary source code for this package
-      "../../types"   // Path to the shared monorepo types directory
-                      // (e.g., MONOREPO_ROOT/types/).
-                      // Adjust this relative path if your shared types are elsewhere.
-    ],
-
     /* Path Aliases */
     "baseUrl": ".", // Sets the base for module resolution to the current package directory (packages/fpl-mcp-server/)
     "paths": {
