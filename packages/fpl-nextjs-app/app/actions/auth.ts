@@ -14,11 +14,16 @@ const getOrigin = () => {
         return 'http://localhost:3000';
     }
 
-    const publicUrl = `https://${process.env.NEXT_PUBLIC_URL}`;
+    const publicUrl = process.env.NEXT_PUBLIC_URL;
 
     if (!publicUrl) {
-        console.error("Error: NEXT_PUBLIC_URL is not set for a non-development environment.");
-        return 'https://fallback-url.com'; // Or throw an error
+        console.error(
+            'Error: NEXT_PUBLIC_URL is not set for a non-development environment.'
+        );
+        // throw an error here
+        throw new Error(
+            'NEXT_PUBLIC_URL is not set for a non-development environment.'
+        );
     }
 
     return publicUrl;
@@ -287,9 +292,9 @@ export const updatePreferencesAction = async (formData: FormData) => {
 
 export const uploadAvatarAction = async (formData: FormData) => {
     const supabase = await createClient();
-    
+
     const avatar = formData.get('avatar') as File;
-    
+
     if (!avatar) {
         return encodedRedirect(
             'error',
@@ -297,12 +302,12 @@ export const uploadAvatarAction = async (formData: FormData) => {
             'No avatar file provided'
         );
     }
-    
+
     // Get the current user
     const {
         data: { user },
     } = await supabase.auth.getUser();
-    
+
     if (!user) {
         return encodedRedirect(
             'error',
@@ -310,11 +315,11 @@ export const uploadAvatarAction = async (formData: FormData) => {
             'You must be signed in to update your avatar.'
         );
     }
-    
+
     // Generate a unique filename
     const fileExt = avatar.name.split('.').pop();
     const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-    
+
     // Upload the file to Supabase Storage
     const { error: uploadError, data } = await supabase.storage
         .from('avatars')
@@ -322,7 +327,7 @@ export const uploadAvatarAction = async (formData: FormData) => {
             upsert: true,
             contentType: avatar.type,
         });
-    
+
     if (uploadError) {
         return encodedRedirect(
             'error',
@@ -330,20 +335,20 @@ export const uploadAvatarAction = async (formData: FormData) => {
             'Failed to upload avatar: ' + uploadError.message
         );
     }
-    
+
     // Get the public URL
     const { data: publicUrlData } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
-    
+
     const avatarUrl = publicUrlData.publicUrl;
-    
+
     // Update the user's profile with the new avatar URL
     try {
         await updateUserProfile({
             avatar_url: avatarUrl,
         });
-        
+
         return encodedRedirect(
             'success',
             '/protected/profile',
