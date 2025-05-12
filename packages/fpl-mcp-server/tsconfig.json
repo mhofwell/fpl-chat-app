@@ -12,8 +12,12 @@
     /* Output Directory */
     "outDir": "./dist", // Output compiled JS to the 'dist' folder
 
-    /* Source Directory */
-    "rootDir": "./src", // Specify the root directory of input files
+    /* Source Directories - Use rootDirs */
+    "rootDirs": [
+      "./src",        // Your primary source code for this package
+      "../../types"   // Path to the shared types directory relative to this tsconfig.json
+                      // Adjust if your shared types live elsewhere (e.g., "../types")
+    ],
 
     /* Path Aliases */
     "baseUrl": ".", // Base directory for path resolution (package root)
