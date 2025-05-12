@@ -4,7 +4,7 @@ import Redis from 'ioredis';
 const redisUrl = process.env.REDIS_URL
     ? `${process.env.REDIS_URL}?family=0`
     : 'redis://localhost:6379?family=0';
-const appEnv = process.env.RAILWAY_ENVIRONMENT_NAME || 'development';
+const appEnv = process.env.APP_ENV || 'development';
 
 // Log environment info for debugging
 console.log('Environment variables:');
