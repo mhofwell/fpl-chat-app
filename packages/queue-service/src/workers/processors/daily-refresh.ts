@@ -5,7 +5,8 @@ import { getJobContext } from '../../lib/context-provider';
 
 export async function dailyRefreshProcessor(job: Job) {
     try {
-        const originalJobData = { ...job.data }; // Keep a copy of the original data
+        // Ensure job.data is treated as an object, provide empty object fallback
+        const originalJobData = { ...(job.data || {}) }; // Keep a copy of the original data
 
         console.log(`[JOB-INFO] Job ${job.id} in ${job.name}. Fetching full context from provider...`);
         // Get the fresh context. Pass the original triggeredBy if available.
@@ -102,9 +103,11 @@ export async function dailyRefreshProcessor(job: Job) {
         return enhancedResult;
 
     } catch (error) {
-        console.error(`[JOB-ERROR] Error in ${job.data.queueName || 'daily-refresh'} processor for job ${job.id}:`, {
+        // Also ensure safety when accessing job.data here
+        const queueName = typeof job.data === 'object' && job.data !== null && job.data.queueName ? job.data.queueName : 'daily-refresh';
+        console.error(`[JOB-ERROR] Error in ${queueName} processor for job ${job.id}:`, {
             error: error instanceof Error ? error.message : 'Unknown error',
-            jobData: job.data, // Log original data for easier debugging of what was initially passed
+            jobData: job.data || {}, // Log original data or empty object
             timestamp: new Date().toISOString()
         });
         throw error;
