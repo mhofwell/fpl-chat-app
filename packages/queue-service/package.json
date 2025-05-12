@@ -1,5 +1,5 @@
 {
-    "name": "fpl-queue-service",
+    "name": "queue-service",
     "version": "1.0.0",
     "description": "Queue service for FPL chat app using BullMQ",
     "main": "dist/server.js",
