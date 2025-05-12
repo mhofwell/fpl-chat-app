@@ -11,6 +11,7 @@
 
     /* Output Directory */
     "outDir": "./dist", // Output compiled JS to the 'dist' folder
+    "rootDir": "./src",
 
     /* Path Aliases */
     "baseUrl": ".", 
