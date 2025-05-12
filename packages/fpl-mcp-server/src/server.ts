@@ -8,7 +8,7 @@ import { registerTools } from './tools';
 import bodyParser from 'body-parser';
 
 const app = express();
-const port = config.nextjsPort || 3001;
+const port = config.nodePort || 3001;
 
 // CORS middleware
 app.use(
