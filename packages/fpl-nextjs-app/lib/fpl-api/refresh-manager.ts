@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/server';
 import redis from '../redis/redis-client';
 import { cacheInvalidator } from './cache-invalidator';
 import { syncBootstrapDerivedTablesFromApiData, syncFplData } from './fpl-data-sync';
-import { BootstrapStaticResponse } from 'fpl-api.types';
+import { BootstrapStaticResponse } from '@fpl-chat-app/types';
 import { calculateTtl } from './client';
 import { fplApi } from './client'; // Make sure fplApi is imported for direct API calls
 

@@ -1,6 +1,6 @@
 // shared-types/fpl-domain.types.ts
 
-import { FplFixtureStat } from './fpl-api.types'; // Or the correct path to your fpl-api.types
+import { FplFixtureStat } from './fpl-api'; // Or the correct path to your fpl-api.types
 
 // Basic FPL data types
 export interface Team {

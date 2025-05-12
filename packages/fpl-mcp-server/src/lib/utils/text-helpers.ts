@@ -1,4 +1,4 @@
-import { Team } from 'fpl-domain.types'; 
+import { Team } from '@fpl-chat-app/types'; 
 
 /**
  * Performs a fuzzy match check.

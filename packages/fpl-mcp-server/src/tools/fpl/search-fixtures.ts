@@ -1,7 +1,5 @@
 import redis from '../../lib/redis/redis-client';
-import { Fixture, Team, Player } from 'fpl-domain.types';
-// We might need FplFixtureStat and FplFixtureStatValue from fpl-api.types if we parse raw stats
-// import { FplFixtureStat, FplFixtureStatValue } from '../../../../../types/fpl-api.types'; 
+import { Fixture, Team, Player } from '@fpl-chat-app/types'; 
 import { fuzzyMatch } from '../../lib/utils/text-helpers';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 interface SearchFixturesParams {

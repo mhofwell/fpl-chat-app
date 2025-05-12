@@ -1,32 +1,24 @@
 {
   "compilerOptions": {
-    /* Core Settings for a Type Definition Package */
-    "target": "ES2022", // Or match your project's target
-    "module": "CommonJS", // Can be CommonJS or ESNext, often less critical for types-only
-    "composite": true, // <-- VERY IMPORTANT: Marks this as a buildable unit for project references
-    "declaration": true, // <-- VERY IMPORTANT: Generates .d.ts files
-    "declarationMap": true, // Generates source maps for declarations (good for debugging)
+    "target": "ES2022", 
+    "module": "Node16", 
+    "declaration": true, 
+    "emitDeclarationOnly": true, 
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true, // Keep strictness consistent
-
-    /* Output */
-    // You can optionally specify an outDir if you want the .d.ts files placed elsewhere,
-    // but often for types-only packages, emitting them alongside the .ts files is fine.
-    // If you *do* add an outDir, make sure to add "rootDir": "." as well.
-    // "outDir": "./dist",
-    // "rootDir": ".",
-
-    /* Optional: Define baseUrl and paths if types import other types using aliases, unlikely here */
-    // "baseUrl": ".",
-    // "paths": {}
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declarationMap": true,
+    "composite": true
   },
   "include": [
     // Include all .ts files within this directory
     "**/*.ts"
   ],
   "exclude": [
-    // Exclude node_modules if it ever exists here
-    "node_modules"
+    "node_modules",
+    "dist"
   ]
 }

@@ -1,6 +1,6 @@
 // src/tools/fpl/fixtures.ts
 import redis from '../../lib/redis/redis-client';
-import { Fixture, Team } from 'fpl-domain.types';
+import { Fixture, Team } from '@fpl-chat-app/types';
 import { z } from 'zod';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 

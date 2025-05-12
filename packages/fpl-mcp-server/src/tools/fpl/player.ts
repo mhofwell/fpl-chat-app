@@ -1,7 +1,7 @@
 // src/tools/fpl/player.ts
 import redis from '../../lib/redis/redis-client';
-import { Player, Team as FplTeamType } from 'fpl-domain.types';
-import { PlayerDetailResponse, FplPlayerHistory, FplDetailedPlayerFixture } from 'fpl-api.types';
+import { Player, Team as FplTeamType } from '@fpl-chat-app/types';
+import { PlayerDetailResponse, FplPlayerHistory, FplDetailedPlayerFixture } from '@fpl-chat-app/types';
 import { fuzzyMatch } from '../../lib/utils/text-helpers';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 

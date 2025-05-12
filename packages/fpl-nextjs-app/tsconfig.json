@@ -22,9 +22,6 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@types/*": ["../../types/*"],
-      "fpl-domain.types": ["../../types/fpl-domain.types.ts"],
-      "fpl-api.types": ["../../types/fpl-api.types.ts"]
     },
     "baseUrl": "."
   },

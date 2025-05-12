@@ -1,5 +1,5 @@
 // lib/fpl-api/entity-extractor.ts
-import { Player, Team, Gameweek } from 'fpl-domain.types';
+import { Player, Team, Gameweek } from '@fpl-chat-app/types';
 
 export interface ExtractedEntities {
     players: Player[];
