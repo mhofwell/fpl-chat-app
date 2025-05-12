@@ -2,8 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { fplApiService } from '../lib/fpl-api/service';
 import dotenv from 'dotenv';
-import { Gameweek, Player, Team, Fixture } from '@/types/fpl';
-import { PlayerDetailResponse } from '@/types/fpl-api-responses';
+import { Gameweek, Player, Team, Fixture } from '../../../types/fpl-domain.types';
+import { PlayerDetailResponse } from '../../../types/fpl-api.types';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });

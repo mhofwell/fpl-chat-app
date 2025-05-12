@@ -30,6 +30,8 @@ export interface Team {
     pulse_id?: number;
 
     last_updated?: string;
+
+    unavailable: boolean;
 }
 
 export interface Player {
@@ -115,6 +117,10 @@ export interface Gameweek {
     is_current: boolean;
     is_next: boolean;
     finished: boolean;
+    data_checked: boolean;
+    average_entry_score?: number;
+    highest_score?: number;
+    is_previous: boolean;
     last_updated?: string;
 }
 
