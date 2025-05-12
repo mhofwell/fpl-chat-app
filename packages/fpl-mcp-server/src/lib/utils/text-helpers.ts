@@ -1,4 +1,4 @@
-import { Team } from '../../../../../types/fpl-domain.types'; // Corrected path
+import { Team } from 'fpl-domain.types'; 
 
 /**
  * Performs a fuzzy match check.

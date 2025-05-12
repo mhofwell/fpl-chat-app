@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     /* Base Options */
-    "target": "ES2022", // Or your desired ECMAScript target
-    "module": "Node16", // Or "CommonJS" depending on your needs, but Node16 handles modern features well
+    "target": "ES2022", 
+    "module": "Node16", 
     "moduleResolution": "Node16",
-    "esModuleInterop": true, // Allows default imports from commonjs modules
+    "esModuleInterop": true, 
     "forceConsistentCasingInFileNames": true,
     "strict": true, // Enable all strict type-checking options
     "skipLibCheck": true, // Skip type checking of declaration files
@@ -13,7 +13,7 @@
     "outDir": "./dist", // Output compiled JS to the 'dist' folder
 
     /* Path Aliases */
-    "baseUrl": ".", // Sets the base for module resolution to the current package directory (packages/fpl-mcp-server/)
+    "baseUrl": ".", 
     "paths": {
       "@/*": ["./src/*"], // Alias for local src files (e.g., @/lib/utils)
       "fpl-domain.types": ["../../types/fpl-domain.types.ts"],

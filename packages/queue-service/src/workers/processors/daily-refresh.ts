@@ -2,7 +2,6 @@ import { Job } from 'bullmq';
 import fetch from 'node-fetch';
 import { config } from '../../config';
 import { getJobContext } from '../../lib/context-provider';
-import { getQueue } from '../../queues';
 
 export async function dailyRefreshProcessor(job: Job) {
     try {
@@ -101,26 +100,6 @@ export async function dailyRefreshProcessor(job: Job) {
         };
         
         console.log(`[JOB-COMPLETE] ${queueName} job ${job.id} completed:`, enhancedResult);
-
-        // Handle successful completion: Re-schedule if it's a repeatable job
-        const repeatOpts = job.opts.repeat; // Access the repeat options directly
-        if (repeatOpts) {
-             console.log(`Daily refresh job completed. Re-scheduling based on cron: ${repeatOpts.cron}`);
-             const dailyRefreshQueue = getQueue('daily-refresh'); // Get the queue instance
-             if (dailyRefreshQueue) { // Check if the queue was found
-                 await dailyRefreshQueue.add(
-                     job.name, // Use the original job name
-                     { ...(job.data ?? {}) }, // Safely spread job.data, default to {} if null/undefined
-                     { // Construct the options object for the next job run
-                        jobId: job.id, // Re-use original ID for singleton if applicable
-                        repeat: repeatOpts // Pass the original repeat options object
-                     }
-                 );
-             } else {
-                console.error('Failed to get daily-refresh queue for rescheduling.');
-             }
-         }
-
         return enhancedResult;
 
     } catch (error) {
