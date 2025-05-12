@@ -8,7 +8,9 @@
     "packages/cron/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present", 
+    "build": "npm run build --workspaces --if-present",
+    "build:mcp-server": "cd packages/fpl-mcp-server && npm install && npx tsc",
+    "start:mcp-server": "cd packages/fpl-mcp-server && node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

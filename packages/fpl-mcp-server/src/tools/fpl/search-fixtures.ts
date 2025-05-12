@@ -1,5 +1,5 @@
 import redis from '../../lib/redis/redis-client';
-import { Fixture, Team, Player } from '../../../../../types/fpl-domain.types';
+import { Fixture, Team, Player } from 'fpl-domain.types';
 // We might need FplFixtureStat and FplFixtureStatValue from fpl-api.types if we parse raw stats
 // import { FplFixtureStat, FplFixtureStatValue } from '../../../../../types/fpl-api.types'; 
 import { fuzzyMatch } from '../../lib/utils/text-helpers';

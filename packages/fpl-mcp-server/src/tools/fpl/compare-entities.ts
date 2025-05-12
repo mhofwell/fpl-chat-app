@@ -1,6 +1,6 @@
 import redis from '../../lib/redis/redis-client';
-import { Player, Team, Fixture } from '../../../../../types/fpl-domain.types';
-import { PlayerDetailResponse } from '../../../../../types/fpl-api.types'; // For PlayerDetail & stats
+import { Player, Team, Fixture } from 'fpl-domain.types';
+import { PlayerDetailResponse } from 'fpl-api.types'; // For PlayerDetail & stats
 import { fuzzyMatch, findAndDisambiguateTeams, FindTeamResult } from '../../lib/utils/text-helpers';
 import { createStructuredErrorResponse } from '../../lib/utils/response-helpers';
 // --- PLAYER DISAMBIGUATION HELPER ---
