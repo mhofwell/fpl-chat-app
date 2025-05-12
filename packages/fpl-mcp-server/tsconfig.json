@@ -1,34 +1,31 @@
 {
   "compilerOptions": {
     /* Base Options */
-    "target": "ES2022", 
-    "module": "Node16", 
+    "target": "ES2022",
+    "module": "Node16",
     "moduleResolution": "Node16",
-    "esModuleInterop": true, 
+    "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "strict": true, // Enable all strict type-checking options
-    "skipLibCheck": true, // Skip type checking of declaration files
+    "strict": true,
+    "skipLibCheck": true,
 
     /* Output Directory */
-    "outDir": "./dist", // Output compiled JS to the 'dist' folder
+    "outDir": "./dist",
     "rootDir": "./src",
 
     /* Path Aliases */
-    "baseUrl": ".", 
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"], // Alias for local src files (e.g., @/lib/utils)
-      "fpl-domain.types": ["../../types/fpl-domain.types.ts"],
-      "fpl-api.types": ["../../types/fpl-api.types.ts"]
+      "@/*": ["./src/*"],
+      "fpl-domain.types": ["../../types/fpl-domain.types"],
+      "fpl-api.types": ["../../types/fpl-api.types"]
     }
   },
   "include": [
-    "src/**/*.ts",
-    "../../types/**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
-    "node_modules", // Exclude node_modules
-    "dist",          // Exclude the output directory itself
-    "types"         // **Crucially, exclude the local 'types' directory from this compilation**
-                    // to prevent it from interfering with the @types/* aliases meant for shared types.
+    "node_modules",
+    "dist"
   ]
 }
