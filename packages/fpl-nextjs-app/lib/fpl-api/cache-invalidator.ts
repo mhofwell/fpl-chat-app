@@ -1,6 +1,6 @@
 // lib/fpl-api/cache-invalidator.ts
 import redis from '../redis/redis-client';
-import { Gameweek } from '../../../../types/fpl-domain.types';
+import { Gameweek } from 'fpl-domain.types';
 
 /**
  * FPL Cache Invalidation Service

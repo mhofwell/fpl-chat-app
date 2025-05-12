@@ -1,6 +1,6 @@
 import { fplApi } from './client';
 import redis from '../redis/redis-client';
-import { Team, Player, Gameweek, Fixture } from '../../../../types/fpl-domain.types'; // Corrected path
+import { Team, Player, Gameweek, Fixture } from 'fpl-domain.types'; // Corrected path
 import {
     FplElement,
     FplEvent,
@@ -11,7 +11,7 @@ import {
     GameweekLiveResponse,
     PlayerHistoryPast,
     PlayerHistory,
-} from '../../../../types/fpl-api.types'; // Corrected path
+} from 'fpl-api.types'; // Corrected path
 import { calculateTtl } from './client';
 import { fetchWithCache } from './cache-helper';
 import { cacheInvalidator } from './cache-invalidator';
