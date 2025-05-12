@@ -1,7 +1,7 @@
 {
-    "name": "cron-daily-refresh",
+    "name": "cron-pre-deadline-refresh",
     "version": "1.0.0",
-    "description": "FPL Daily Data Refresh Cron Job",
+    "description": "FPL Pre-Deadline Refresh Cron Job",
     "main": "dist/index.js",
     "type": "module",
     "scripts": {
