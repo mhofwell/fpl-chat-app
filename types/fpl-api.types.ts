@@ -18,6 +18,7 @@ export interface FplTeam {
     strength_overall_home: number;
     strength_overall_away: number;
     pulse_id: number;
+    unavailable: boolean;
 }
 
 export interface FplElement {

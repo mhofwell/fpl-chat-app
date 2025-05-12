@@ -441,6 +441,7 @@ export async function syncBootstrapDerivedTablesFromApiData(
             strength_overall_home: apiTeam.strength_overall_home,
             strength_overall_away: apiTeam.strength_overall_away,
             pulse_id: apiTeam.pulse_id,
+            unavailable: apiTeam.unavailable,
             last_updated: new Date().toISOString(),
         }));
 
