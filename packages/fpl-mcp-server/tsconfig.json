@@ -1,24 +1,32 @@
 {
- "compilerOptions": {
-    "target": "ES2022",
-    "module": "Node16",
+  "compilerOptions": {
+    /* Base Options */
+    "target": "ES2022", // Or your desired ECMAScript target
+    "module": "Node16", // Or "CommonJS" depending on your needs, but Node16 handles modern features well
     "moduleResolution": "Node16",
-    "esModuleInterop": true,
+    "esModuleInterop": true, // Allows default imports from commonjs modules
     "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "outDir": "./dist",
-    // "rootDir": "./src", // Remove this line
-    "baseUrl": ".", // Paths will be relative to the package root (packages/fpl-mcp-server/)
+    "strict": true, // Enable all strict type-checking options
+    "skipLibCheck": true, // Skip type checking of declaration files
+
+    /* Output Directory */
+    "outDir": "./dist", // Output compiled JS to the 'dist' folder
+
+    /* Source Directory */
+    "rootDir": "./src", // Specify the root directory of input files
+
+    /* Path Aliases */
+    "baseUrl": ".", // Base directory for path resolution (package root)
     "paths": {
-      "@/*": ["src/*"], // Alias for this package's source files
-      "@types/*": ["../../types/*"] // Alias for shared types (PROJECT_ROOT/types/)
-    },
-    "rootDirs": [ // Specify multiple roots
-      "src", // Files from here will be output to 'dist/'
-      "../../types" // Files from here are available for type resolution
-    ]
+      "@/*": ["src/*"], // Alias for files within this package's src folder
+      "@types/*": ["../../types/*"] // Alias for shared types in the monorepo root
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*.ts" // Include all TypeScript files within the src directory
+  ],
+  "exclude": [
+    "node_modules", // Exclude node_modules
+    "dist"          // Exclude the output directory itself
+  ]
 }
