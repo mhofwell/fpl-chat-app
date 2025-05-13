@@ -4,7 +4,14 @@ import { createClient } from '@/utils/supabase/server';
 import { Team, Player, Gameweek, Fixture } from '@fpl-chat-app/types';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { cacheInvalidator } from './cache-invalidator';
-import { FplElement, FplEvent, FplTeam, BootstrapStaticResponse } from '@fpl-chat-app/types';
+import { 
+    FplElement, 
+    FplEvent, 
+    FplTeam, 
+    BootstrapStaticResponse,
+    PlayerHistory 
+} from '@fpl-chat-app/types';
+import * as transformers from './transformers';
 
 // Maximum items per batch for efficient database operations
 const BATCH_SIZE = 50;
@@ -247,7 +254,7 @@ async function updatePlayerGameweekStatsForFinishedGameweeks(supabase: SupabaseC
             .from('gameweeks')
             .select('id, name')
             .eq('finished', true)
-            .eq('is_player_stats_synced', false)
+            .is('is_player_stats_synced', false) // Use 'is' to handle both null and false
             .order('id', { ascending: true });
 
         if (gwError) {
@@ -278,30 +285,43 @@ async function updatePlayerGameweekStatsForFinishedGameweeks(supabase: SupabaseC
                     continue;
                 }
 
-                // Define a more specific type if available, e.g., from fpl-api.types.ts
-                const playerStatsRecords = liveData.elements.map((playerElement: any) => ({
-                    player_id: playerElement.id,
-                    gameweek_id: gw.id,
-                    minutes: playerElement.stats.minutes,
-                    goals_scored: playerElement.stats.goals_scored,
-                    assists: playerElement.stats.assists,
-                    clean_sheets: playerElement.stats.clean_sheets,
-                    goals_conceded: playerElement.stats.goals_conceded,
-                    own_goals: playerElement.stats.own_goals,
-                    penalties_saved: playerElement.stats.penalties_saved,
-                    penalties_missed: playerElement.stats.penalties_missed,
-                    yellow_cards: playerElement.stats.yellow_cards,
-                    red_cards: playerElement.stats.red_cards,
-                    saves: playerElement.stats.saves,
-                    bonus: playerElement.stats.bonus,
-                    bps: playerElement.stats.bps,
-                    influence: parseFloat(playerElement.stats.influence || '0.0').toFixed(1),
-                    creativity: parseFloat(playerElement.stats.creativity || '0.0').toFixed(1),
-                    threat: parseFloat(playerElement.stats.threat || '0.0').toFixed(1),
-                    ict_index: parseFloat(playerElement.stats.ict_index || '0.0').toFixed(1),
-                    total_points: playerElement.stats.total_points,
-                    // created_at and last_updated have DB defaults
-                }));
+                // Convert the live data elements to PlayerHistory format and use transformers
+                const playerStatsRecords = liveData.elements.map((playerElement: any) => {
+                    // Create a PlayerHistory-like object from the live data
+                    const playerHistoryData: PlayerHistory = {
+                        element: playerElement.id,
+                        fixture: 0, // Not relevant for this context
+                        opponent_team: 0, // Not relevant for this context
+                        round: gw.id,
+                        was_home: false, // Not relevant for this context
+                        kickoff_time: '', // Not relevant for this context
+                        total_points: playerElement.stats.total_points || 0,
+                        value: 0, // Not relevant for this context
+                        minutes: playerElement.stats.minutes || 0,
+                        goals_scored: playerElement.stats.goals_scored || 0,
+                        assists: playerElement.stats.assists || 0,
+                        clean_sheets: playerElement.stats.clean_sheets || 0,
+                        goals_conceded: playerElement.stats.goals_conceded || 0,
+                        own_goals: playerElement.stats.own_goals || 0,
+                        penalties_saved: playerElement.stats.penalties_saved || 0,
+                        penalties_missed: playerElement.stats.penalties_missed || 0,
+                        yellow_cards: playerElement.stats.yellow_cards || 0,
+                        red_cards: playerElement.stats.red_cards || 0,
+                        saves: playerElement.stats.saves || 0,
+                        bonus: playerElement.stats.bonus || 0,
+                        bps: playerElement.stats.bps || 0,
+                        influence: playerElement.stats.influence || '0.0',
+                        creativity: playerElement.stats.creativity || '0.0',
+                        threat: playerElement.stats.threat || '0.0',
+                        ict_index: playerElement.stats.ict_index || '0.0',
+                    };
+                    
+                    // Use the transformer function for consistency
+                    return transformers.transformPlayerGameweekStats(
+                        playerElement.id, 
+                        playerHistoryData
+                    );
+                });
 
                 if (playerStatsRecords.length > 0) {
                     // Upsert player stats in batches
