@@ -5,7 +5,8 @@
     "private": true,
     "workspaces": [
         "types",
-        "packages/*"
+        "packages/*",
+        "packages/cron/*"
     ],
     "packageManager": "npm@11.3.0",
     "scripts": {
