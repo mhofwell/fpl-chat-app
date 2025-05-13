@@ -7,7 +7,10 @@ export async function scheduleUpdateProcessor(job: Job) {
     try {
         const originalJobData = { ...(job.data || {}) };
 
-        console.log(`[JOB-INFO] Job ${job.id} in ${job.name} received with data:`, originalJobData);
+        console.log(`[JOB-INFO] Job ${job.id} in ${job.name} received with data (windows stringified):`, {
+            ...originalJobData,
+            windows: JSON.stringify(originalJobData.windows) // Stringify specifically for this log
+        });
 
         const freshContext = await getJobContext(job.name, originalJobData.triggeredBy || 'system_processor_default');
         
