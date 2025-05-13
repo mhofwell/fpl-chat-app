@@ -45,3 +45,6 @@ logs
 
 # Turbo
 .turbo/
+
+# Cursor editor configuration
+.cursor/
