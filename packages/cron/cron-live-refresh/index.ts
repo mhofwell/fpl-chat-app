@@ -1,18 +1,53 @@
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 import { addJobToQueue } from './queue-client.js';
 dotenv.config();
 
 console.log(`[CRON-START] Starting FPL live refresh scheduler at ${new Date().toISOString()}`);
 
-// Check if we should run based on match schedule
+// Check if we should run based on match schedule by calling the schedule check API
 async function shouldRunLiveRefresh() {
   try {
-    // This would typically check the match schedule in the database
-    // For now, we'll just return true to ensure it runs
-    return true;
+    const NEXT_CLIENT_PORT = process.env.NEXT_CLIENT_PORT || 3000;
+    const BASE_URL = process.env.NEXT_CLIENT_PRIVATE_URL || 'localhost';
+    const APP_URL = `http://${BASE_URL}:${NEXT_CLIENT_PORT}`;
+    const SCHEDULE_CHECK_ENDPOINT = `${APP_URL}/api/cron/schedule/check?jobType=live-update`;
+    const CRON_SECRET = process.env.CRON_SECRET;
+
+    console.log(`[CRON-CHECK] Checking schedule at ${SCHEDULE_CHECK_ENDPOINT}`);
+    
+    const response = await fetch(SCHEDULE_CHECK_ENDPOINT, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${CRON_SECRET}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error from schedule check! Status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    // If schedule checking is disabled, we should run
+    if (result.scheduleCheckingDisabled) {
+      console.log('[CRON-CHECK] Schedule checking is disabled, proceeding with job');
+      return true;
+    }
+    
+    // Otherwise, check if we have an active window
+    if (result.shouldRun) {
+      console.log(`[CRON-CHECK] Found ${result.activeWindows?.length || 0} active windows, proceeding with job`);
+    } else {
+      console.log('[CRON-CHECK] No active windows found, skipping job');
+    }
+    
+    return result.shouldRun;
   } catch (error) {
     console.error('[CRON-ERROR] Error checking if live refresh should run:', error);
-    return true; // Default to running if check fails
+    console.log('[CRON-ERROR] Defaulting to running the job due to schedule check error');
+    return true; // Default to running if check fails for safety
   }
 }
 

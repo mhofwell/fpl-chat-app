@@ -12,7 +12,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const jobType = url.searchParams.get('jobType');
 
-    if (!jobType || (jobType !== 'live-update' && jobType !== 'post-match')) {
+    // Validate job type
+    if (!jobType || !['live-update', 'post-match'].includes(jobType)) {
         return NextResponse.json({ 
             error: 'Invalid job type', 
             scheduleCheckingDisabled: true // Default to running the job
