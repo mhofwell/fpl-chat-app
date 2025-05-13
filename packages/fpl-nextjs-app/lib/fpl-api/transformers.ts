@@ -122,7 +122,6 @@ export function transformApiGameweek(apiEvent: FplEvent): Gameweek {
         data_checked: apiEvent.data_checked,
         is_previous: apiEvent.is_previous,
         average_entry_score: apiEvent.average_entry_score,
-        highest_score: apiEvent.highest_score,
         is_player_stats_synced: false, // DB-specific flag
     };
 }

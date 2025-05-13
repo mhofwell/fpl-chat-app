@@ -97,7 +97,6 @@ async function seedDatabase() {
                 data_checked: gameweek.data_checked,
                 is_previous: gameweek.is_previous,
                 average_entry_score: gameweek.average_entry_score,
-                highest_score: gameweek.highest_score,
                 is_player_stats_synced: false,
             });
             if (error) {
