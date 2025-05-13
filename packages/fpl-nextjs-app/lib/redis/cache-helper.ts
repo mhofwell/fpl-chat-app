@@ -217,7 +217,8 @@ export async function batchFetchWithCache<T>(
         fetchFn: () => Promise<T>;
     }[] = [];
 
-    const results: (T | Error)[] = memoryResults.slice();
+    // Initialize results array with memoryResults, converting undefined to Error | T
+    const results: (T | Error)[] = memoryResults.map(r => r as T);
 
     // Second pass: process Redis results
     for (let i = 0; i < redisKeyIndices.length; i++) {

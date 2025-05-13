@@ -198,7 +198,10 @@ export class MemoryCache {
         const regex = new RegExp(pattern.replace('*', '.*'));
         let count = 0;
         
-        for (const key of this.cache.keys()) {
+        // Convert keys iterator to array first to avoid TypeScript iteration error
+        const keys = Array.from(this.cache.keys());
+        
+        for (const key of keys) {
             // Remove namespace prefix for pattern matching
             const rawKey = this.namespace ? key.substring(this.namespace.length + 1) : key;
             
@@ -244,7 +247,10 @@ export class MemoryCache {
         const now = Date.now();
         let cleaned = 0;
         
-        for (const [key, entry] of this.cache.entries()) {
+        // Convert entries iterator to array first to avoid TypeScript iteration error
+        const entries = Array.from(this.cache.entries());
+        
+        for (const [key, entry] of entries) {
             if (entry.expiry < now) {
                 this.cache.delete(key);
                 this.currentSize -= entry.size;
@@ -293,7 +299,10 @@ export class MemoryCache {
         let oldestTime = Infinity;
         let oldestSize = 0;
         
-        for (const [key, entry] of this.cache.entries()) {
+        // Convert entries iterator to array first to avoid TypeScript iteration error
+        const entries = Array.from(this.cache.entries());
+        
+        for (const [key, entry] of entries) {
             if (entry.lastAccessed < oldestTime) {
                 oldestTime = entry.lastAccessed;
                 oldestKey = key;
