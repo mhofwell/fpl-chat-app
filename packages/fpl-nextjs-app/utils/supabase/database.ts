@@ -1,6 +1,5 @@
 // utils/supabase/database.ts
 import { createClient } from '@/utils/supabase/server';
-import { Database } from '@/types/supabase';
 import { Cache, CacheTypes } from '@/types/supabase';
 
 /**
