@@ -14,8 +14,10 @@ import {
     PlayerSeasonSummaryStats,
 } from '@fpl-chat-app/types'; // Corrected path
 import { calculateTtl } from './client';
-import { fetchWithCache } from './cache-helper';
+import { fetchWithCache, batchFetchWithCache, batchCacheSet } from '../redis/cache-helper';
 import { cacheInvalidator } from './cache-invalidator';
+import * as formatters from './formatters';
+import * as transformers from './transformers';
 // import { createClient } from '@/utils/supabase/server';
 import { createAdminSupabaseClient } from '@/utils/supabase/admin-client';
 
@@ -76,30 +78,60 @@ export const fplApiService = {
             'fpl:teams',
             async () => {
                 const bootstrapData = await fplApi.getBootstrapStatic();
-                return bootstrapData.teams.map((apiTeam: FplTeam) => ({
-                    id: apiTeam.id,
-                    name: apiTeam.name,
-                    short_name: apiTeam.short_name,
-                    code: apiTeam.code,
-                    played: apiTeam.played,
-                    form: apiTeam.form,
-                    loss: apiTeam.loss,
-                    points: apiTeam.points,
-                    position: apiTeam.position,
-                    strength: apiTeam.strength,
-                    draw: apiTeam.draw,
-                    win: apiTeam.win,
-                    strength_overall_home: apiTeam.strength_overall_home,
-                    strength_overall_away: apiTeam.strength_overall_away,
-                    strength_attack_home: apiTeam.strength_attack_home,
-                    strength_attack_away: apiTeam.strength_attack_away,
-                    strength_defence_home: apiTeam.strength_defence_home,
-                    strength_defence_away: apiTeam.strength_defence_away,
-                    pulse_id: apiTeam.pulse_id,
-                }));
+                return bootstrapData.teams.map(transformers.transformApiTeam);
             },
             'bootstrap-static'
         );
+    },
+    
+    /**
+     * Get multiple teams by ID with efficient batch fetching
+     * @param teamIds Array of team IDs to fetch
+     * @returns Teams mapped by their ID
+     */
+    async getTeamsByIds(teamIds: number[]): Promise<Record<number, Team>> {
+        // Deduplicate team IDs
+        const uniqueTeamIds = Array.from(new Set(teamIds));
+        
+        if (uniqueTeamIds.length === 0) {
+            return {};
+        }
+        
+        // If requesting too many teams, more efficient to get all teams
+        if (uniqueTeamIds.length > 10) {
+            const allTeams = await this.getTeams();
+            return allTeams.reduce((acc, team) => {
+                if (uniqueTeamIds.includes(team.id)) {
+                    acc[team.id] = team;
+                }
+                return acc;
+            }, {} as Record<number, Team>);
+        }
+        
+        // For a smaller set, use batch fetch
+        const batchItems = uniqueTeamIds.map(teamId => ({
+            cacheKey: `fpl:team:${teamId}`,
+            fetchFn: async () => {
+                // If no specific team endpoint exists, get all teams and filter
+                const allTeams = await this.getTeams();
+                return allTeams.find(t => t.id === teamId) || null;
+            }
+        }));
+        
+        // Use the new batch fetch function
+        const teams = await batchFetchWithCache(batchItems, calculateTtl('bootstrap-static'), {
+            useParallel: true,
+            continueOnError: true,
+            logLevel: 'info'
+        });
+        
+        // Convert array result to object mapped by team ID
+        return teams.reduce((acc, team, index) => {
+            if (team && !(team instanceof Error)) {
+                acc[uniqueTeamIds[index]] = team;
+            }
+            return acc;
+        }, {} as Record<number, Team>);
     },
 
     /**
@@ -113,54 +145,7 @@ export const fplApiService = {
             baseCacheKey,
             async () => {
                 const bootstrapData = await fplApi.getBootstrapStatic();
-                let basicPlayers = bootstrapData.elements.map((apiPlayer: FplElement) => ({
-                    id: apiPlayer.id,
-                    web_name: apiPlayer.web_name,
-                    full_name: `${apiPlayer.first_name} ${apiPlayer.second_name}`,
-                    first_name: apiPlayer.first_name,
-                    second_name: apiPlayer.second_name,
-                    team_id: apiPlayer.team,
-                    element_type: apiPlayer.element_type,
-                    position: apiPlayer.element_type === 1 ? 'GKP' : apiPlayer.element_type === 2 ? 'DEF' : apiPlayer.element_type === 3 ? 'MID' : 'FWD',
-                    form: apiPlayer.form,
-                    points_per_game: apiPlayer.points_per_game,
-                    total_points: apiPlayer.total_points,
-                    minutes: apiPlayer.minutes,
-                    goals_scored: apiPlayer.goals_scored,
-                    assists: apiPlayer.assists,
-                    clean_sheets: apiPlayer.clean_sheets,
-                    goals_conceded: apiPlayer.goals_conceded,
-                    own_goals: apiPlayer.own_goals,
-                    penalties_saved: apiPlayer.penalties_saved,
-                    penalties_missed: apiPlayer.penalties_missed,
-                    yellow_cards: apiPlayer.yellow_cards,
-                    red_cards: apiPlayer.red_cards,
-                    saves: apiPlayer.saves,
-                    bonus: apiPlayer.bonus,
-                    bps: apiPlayer.bps,
-                    status: apiPlayer.status,
-                    news: apiPlayer.news,
-                    news_added: apiPlayer.news_added,
-                    chance_of_playing_next_round: apiPlayer.chance_of_playing_next_round,
-                    chance_of_playing_this_round: apiPlayer.chance_of_playing_this_round,
-                    influence: apiPlayer.influence,
-                    creativity: apiPlayer.creativity,
-                    threat: apiPlayer.threat,
-                    ict_index: apiPlayer.ict_index,
-                    ep_next: apiPlayer.ep_next,
-                    ep_this: apiPlayer.ep_this,
-                    selected_by_percent: apiPlayer.selected_by_percent,
-                    transfers_in: apiPlayer.transfers_in,
-                    transfers_out: apiPlayer.transfers_out,
-                    dreamteam_count: apiPlayer.dreamteam_count,
-                    now_cost: apiPlayer.now_cost,
-                    cost_change_start: apiPlayer.cost_change_start,
-                    cost_change_event: apiPlayer.cost_change_event,
-                    cost_change_event_fall: apiPlayer.cost_change_event_fall,
-                    cost_change_start_fall: apiPlayer.cost_change_start_fall,
-                    current_season_performance: [] as PlayerGameweekHistoryPoint[],
-                    previous_season_summary: null as PlayerSeasonSummaryStats | null,
-                }));
+                let basicPlayers = bootstrapData.elements.map(transformers.transformApiPlayer);
 
                 if (options?.teamId) {
                     basicPlayers = basicPlayers.filter((p: Player) => p.team_id === options.teamId);
@@ -251,18 +236,7 @@ export const fplApiService = {
             'fpl:gameweeks',
             async () => {
                 const bootstrapData = await fplApi.getBootstrapStatic();
-                return bootstrapData.events.map((gw: FplEvent) => ({
-                    id: gw.id,
-                    name: gw.name,
-                    deadline_time: gw.deadline_time,
-                    is_current: gw.is_current,
-                    is_next: gw.is_next,
-                    finished: gw.finished,
-                    data_checked: gw.data_checked,
-                    is_previous: gw.is_previous,
-                    average_entry_score: gw.average_entry_score,
-                    is_player_stats_synced: false,
-                }));
+                return bootstrapData.events.map(transformers.transformApiGameweek);
             },
             'bootstrap-static'
         );
@@ -306,6 +280,14 @@ export const fplApiService = {
             'fixtures'
         );
     },
+    
+    /**
+     * Get fixtures in the application's Fixture format, optionally filtered by gameweek
+     */
+    async getFormattedFixtures(gameweekId?: number): Promise<Fixture[]> {
+        const fixturesData = await this.getFixtures(gameweekId);
+        return fixturesData.map(transformers.transformApiFixture);
+    },
 
     /**
      * Get detailed player information from FPL API and persist/update
@@ -324,32 +306,9 @@ export const fplApiService = {
 
                     // 1. Update player_season_stats (history_past)
                     if (playerDetailData.history_past && playerDetailData.history_past.length > 0) {
-                        const seasonStatsRecords = playerDetailData.history_past.map((season: PlayerHistoryPast) => ({
-                            player_id: playerId,
-                            season_name: season.season_name,
-                            element_code: season.element_code,
-                            start_cost: season.start_cost,
-                            end_cost: season.end_cost,
-                            minutes: season.minutes,
-                            goals_scored: season.goals_scored,
-                            assists: season.assists,
-                            clean_sheets: season.clean_sheets,
-                            goals_conceded: season.goals_conceded,
-                            own_goals: season.own_goals,
-                            penalties_saved: season.penalties_saved,
-                            penalties_missed: season.penalties_missed,
-                            yellow_cards: season.yellow_cards,
-                            red_cards: season.red_cards,
-                            saves: season.saves,
-                            bonus: season.bonus,
-                            bps: season.bps,
-                            influence: season.influence, // Stored as text as per your migration.sql
-                            creativity: season.creativity, // Stored as text
-                            threat: season.threat,       // Stored as text
-                            ict_index: season.ict_index,   // Stored as text
-                            total_points: season.total_points,
-                            // created_at and updated_at are handled by DB
-                        }));
+                        const seasonStatsRecords = playerDetailData.history_past.map(
+                            (season: PlayerHistoryPast) => transformers.transformPlayerSeasonStats(playerId, season)
+                        );
 
                         const { error: seasonStatsError } = await supabaseAdmin
                             .from('player_season_stats')
@@ -364,29 +323,9 @@ export const fplApiService = {
 
                     // 2. Update player_gameweek_stats (history - current season from player detail)
                     if (playerDetailData.history && playerDetailData.history.length > 0) {
-                        const gameweekStatsRecords = playerDetailData.history.map((gwStat: PlayerHistory) => ({
-                            player_id: playerId, 
-                            gameweek_id: gwStat.round, // 'round' from API maps to gameweek_id
-                            minutes: gwStat.minutes,
-                            goals_scored: gwStat.goals_scored,
-                            assists: gwStat.assists,
-                            clean_sheets: gwStat.clean_sheets,
-                            goals_conceded: gwStat.goals_conceded,
-                            own_goals: gwStat.own_goals,
-                            penalties_saved: gwStat.penalties_saved,
-                            penalties_missed: gwStat.penalties_missed,
-                            yellow_cards: gwStat.yellow_cards,
-                            red_cards: gwStat.red_cards,
-                            saves: gwStat.saves,
-                            bonus: gwStat.bonus,
-                            bps: gwStat.bps,
-                            influence: parseFloat(gwStat.influence || '0.0').toFixed(1) as unknown as number, // DB expects NUMERIC
-                            creativity: parseFloat(gwStat.creativity || '0.0').toFixed(1) as unknown as number,
-                            threat: parseFloat(gwStat.threat || '0.0').toFixed(1) as unknown as number,
-                            ict_index: parseFloat(gwStat.ict_index || '0.0').toFixed(1) as unknown as number,
-                            total_points: gwStat.total_points,
-                            // created_at and updated_at are handled by DB
-                        }));
+                        const gameweekStatsRecords = playerDetailData.history.map(
+                            (gwStat: PlayerHistory) => transformers.transformPlayerGameweekStats(playerId, gwStat)
+                        );
 
                         const { error: gameweekStatsError } = await supabaseAdmin
                             .from('player_gameweek_stats')
@@ -454,6 +393,46 @@ export const fplApiService = {
         } catch (apiError) { console.error(`API error fetching live gameweek ${gameweekId} for player stats:`, apiError); }
         return null;
     },
+    
+    /**
+     * Get multiple players' gameweek stats in batch (current season)
+     * @param playerIds Array of player IDs to fetch stats for
+     * @param gameweekId Gameweek ID to fetch stats for
+     * @returns Map of player ID to their gameweek stats
+     */
+    async getPlayersGameweekStatsBatch(
+        playerIds: number[],
+        gameweekId: number
+    ): Promise<Record<number, PlayerGameweekHistoryPoint>> {
+        // Deduplicate player IDs
+        const uniquePlayerIds = Array.from(new Set(playerIds));
+        
+        if (uniquePlayerIds.length === 0) {
+            return {};
+        }
+        
+        // Create batch fetch items
+        const batchItems = uniquePlayerIds.map(playerId => ({
+            cacheKey: `fpl:player:${playerId}:gwstats:${gameweekId}`,
+            fetchFn: async () => {
+                return await this.getPlayerGameweekStats(playerId, gameweekId);
+            }
+        }));
+        
+        // Use batch fetch
+        const results = await batchFetchWithCache(batchItems, 60 * 60 * 12, { // 12 hours TTL
+            useParallel: true,
+            continueOnError: true
+        });
+        
+        // Convert to map by player ID, filtering out nulls and errors
+        return results.reduce((acc, result, index) => {
+            if (result && !(result instanceof Error)) {
+                acc[uniquePlayerIds[index]] = result;
+            }
+            return acc;
+        }, {} as Record<number, PlayerGameweekHistoryPoint>);
+    },
 
     /**
      * Get player's season stats from history
@@ -483,6 +462,54 @@ export const fplApiService = {
             if (error) console.error(`Error fetching all player_season_stats for player ${playerId}:`, error);
             return data || [];
         }
+    },
+    
+    /**
+     * Get players by IDs with efficient batch fetching
+     * @param playerIds Array of player IDs to fetch
+     * @returns Record of player ID to player object
+     */
+    async getPlayersByIds(playerIds: number[]): Promise<Record<number, Player>> {
+        // Deduplicate player IDs
+        const uniquePlayerIds = Array.from(new Set(playerIds));
+        
+        if (uniquePlayerIds.length === 0) {
+            return {};
+        }
+        
+        // If requesting many players, more efficient to get all players and filter
+        if (uniquePlayerIds.length > 20) {
+            const allPlayers = await this.getPlayers();
+            return allPlayers.reduce((acc, player) => {
+                if (uniquePlayerIds.includes(player.id)) {
+                    acc[player.id] = player;
+                }
+                return acc;
+            }, {} as Record<number, Player>);
+        }
+        
+        // For smaller sets, use batch fetch
+        const batchItems = uniquePlayerIds.map(playerId => ({
+            cacheKey: `fpl:player:${playerId}:enriched`,
+            fetchFn: async () => {
+                const allPlayers = await this.getPlayers();
+                return allPlayers.find(p => p.id === playerId) || null;
+            }
+        }));
+        
+        // Use the batch fetch function
+        const players = await batchFetchWithCache(batchItems, calculateTtl('bootstrap-static'), {
+            useParallel: true,
+            continueOnError: true
+        });
+        
+        // Convert array result to record by player ID
+        return players.reduce((acc, player, index) => {
+            if (player && !(player instanceof Error)) {
+                acc[uniquePlayerIds[index]] = player;
+            }
+            return acc;
+        }, {} as Record<number, Player>);
     },
 
     /**
@@ -547,7 +574,7 @@ export const fplApiService = {
                 return false;
             }
             // Additional check: ensure is_player_stats_synced is false if you want to avoid re-syncing
-            // if (gameweekInfo.is_player_stats_synced) {
+            // if (gameweekInfo.is_player_stats_synced === true) {
             //     console.log(`Player stats for Gameweek ${gameweekId} already synced.`);
             //     return true;
             // }
@@ -566,9 +593,16 @@ export const fplApiService = {
             for (const elementDetail of liveData.elements) {
                 const stats = elementDetail.stats;
                 if (stats && stats.minutes > 0) {
-                    playerStatsToUpsert.push({
-                        player_id: elementDetail.id,
-                        gameweek_id: gameweekId,
+                    // Create a PlayerHistory-like object from elementDetail.stats
+                    const playerHistoryData: PlayerHistory = {
+                        element: elementDetail.id,
+                        fixture: 0, // Not relevant for this context
+                        opponent_team: 0, // Not relevant for this context
+                        round: gameweekId,
+                        was_home: false, // Not relevant for this context
+                        kickoff_time: '', // Not relevant for this context
+                        total_points: stats.total_points || 0,
+                        value: 0, // Not relevant for this context
                         minutes: stats.minutes || 0,
                         goals_scored: stats.goals_scored || 0,
                         assists: stats.assists || 0,
@@ -582,13 +616,17 @@ export const fplApiService = {
                         saves: stats.saves || 0,
                         bonus: stats.bonus || 0,
                         bps: stats.bps || 0,
-                        influence: parseFloat(stats.influence || '0.0').toFixed(1) as unknown as number,
-                        creativity: parseFloat(stats.creativity || '0.0').toFixed(1) as unknown as number,
-                        threat: parseFloat(stats.threat || '0.0').toFixed(1) as unknown as number,
-                        ict_index: parseFloat(stats.ict_index || '0.0').toFixed(1) as unknown as number,
-                        total_points: stats.total_points || 0,
-                        // created_at and updated_at handled by DB
-                    });
+                        influence: stats.influence || '0.0',
+                        creativity: stats.creativity || '0.0',
+                        threat: stats.threat || '0.0',
+                        ict_index: stats.ict_index || '0.0',
+                    };
+                    
+                    // Use the transformer function for consistency
+                    playerStatsToUpsert.push(transformers.transformPlayerGameweekStats(
+                        elementDetail.id, 
+                        playerHistoryData
+                    ));
                 }
             }
 
@@ -701,41 +739,34 @@ export const fplApiService = {
                 return false;
             }
 
-            // 3. Prepare data for Redis cache (domain objects or structured raw data)
-            // These mappings are simplified from your older version for brevity
-            // Ensure your Team, Gameweek, Player types in @fpl-chat-app/types are comprehensive
-            const teamsForCache: Team[] = bootstrapData.teams.map((t: FplTeam) => ({ ...t } as Team)); // Adjust mapping
-            const gameweeksForCache: Gameweek[] = bootstrapData.events.map((e: FplEvent) => ({ ...e, name: e.name || `Gameweek ${e.id}` } as Gameweek));
-            const playersForCache: Player[] = bootstrapData.elements.map((el: FplElement) => ({
-                ...el,
-                full_name: `${el.first_name} ${el.second_name}`,
-                team_id: el.team, // Map 'team' to 'team_id'
-                position: el.element_type === 1 ? 'GKP' : el.element_type === 2 ? 'DEF' : el.element_type === 3 ? 'MID' : 'FWD',
-                current_season_performance: [], // Will be enriched by getPlayers if called
-                previous_season_summary: null,  // Will be enriched
-            } as Player));
+            // 3. Prepare data for Redis cache using transformers
+            const { teams: teamsForCache, players: playersForCache, gameweeks: gameweeksForCache } = 
+                transformers.transformBootstrapData(bootstrapData);
             
             // Raw FPL fixtures are fine for fpl:fixtures cache if that's what downstream consumers expect
             const fixturesForCache: FplFixture[] = fplFixturesAll;
 
 
-            // 4. Update Redis Cache using pipeline
-            const pipeline = redis.pipeline();
-            pipeline.set('fpl:bootstrap-static', JSON.stringify(bootstrapData), 'EX', calculateTtl('bootstrap-static'));
-            pipeline.set('fpl:teams', JSON.stringify(teamsForCache), 'EX', calculateTtl('bootstrap-static')); // Derived from bootstrap
-            pipeline.set('fpl:gameweeks', JSON.stringify(gameweeksForCache), 'EX', calculateTtl('bootstrap-static')); // Derived from bootstrap
-            pipeline.set('fpl:players:basic', JSON.stringify(playersForCache), 'EX', calculateTtl('bootstrap-static')); // Basic players, before enrichment
-            pipeline.set('fpl:fixtures:all', JSON.stringify(fixturesForCache), 'EX', calculateTtl('fixtures'));
+            // 4. Update Redis Cache using batch set
+            const cacheItems = [
+                { cacheKey: 'fpl:bootstrap-static', data: bootstrapData },
+                { cacheKey: 'fpl:teams', data: teamsForCache },
+                { cacheKey: 'fpl:gameweeks', data: gameweeksForCache },
+                { cacheKey: 'fpl:players:basic', data: playersForCache },
+                { cacheKey: 'fpl:fixtures:all', data: fixturesForCache }
+            ];
+            
+            // Use our new batchCacheSet function for better performance
+            await batchCacheSet(cacheItems, calculateTtl('bootstrap-static'));
             
             // Cache live data for current gameweek if any
             const currentGameweek = bootstrapData.events.find((gw: FplEvent) => gw.is_current);
             if (currentGameweek) {
                 const liveData = await this.getLiveGameweek(currentGameweek.id); // Uses its own caching
                 if (liveData) { // getLiveGameweek now returns null on error
-                    pipeline.set(`fpl:gameweek:${currentGameweek.id}:live:raw`, JSON.stringify(liveData), 'EX', calculateTtl('live'));
+                    await redis.set(`fpl:gameweek:${currentGameweek.id}:live:raw`, JSON.stringify(liveData), 'EX', calculateTtl('live'));
                 }
             }
-            await pipeline.exec();
             console.log('Core FPL data updated in Redis cache.');
 
             // 5. Update Database Tables
@@ -745,7 +776,7 @@ export const fplApiService = {
 
             await this.updateFixtureResults(); // Persists finished fixture scores to DB
 
-            const completedGameweeks = gameweeksForCache.filter((gw: Gameweek) => gw.finished && !gw.is_player_stats_synced);
+            const completedGameweeks = gameweeksForCache.filter((gw: Gameweek) => gw.finished && gw.is_player_stats_synced !== true);
             for (const gameweek of completedGameweeks) {
                 console.log(`Syncing player stats for recently completed Gameweek ${gameweek.id}`);
                 await this.updatePlayerStats(gameweek.id); // Persists player_gameweek_stats
