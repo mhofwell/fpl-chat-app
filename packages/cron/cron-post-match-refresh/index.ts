@@ -5,6 +5,13 @@ dotenv.config();
 
 console.log(`[CRON-START] Starting FPL post-match refresh scheduler at ${new Date().toISOString()}`);
 
+// Define the type for the schedule check response
+interface ScheduleCheckResponse {
+  scheduleCheckingDisabled: boolean;
+  shouldRun: boolean;
+  activeWindows?: Array<unknown>;
+}
+
 // Check if we should run based on recently finished matches by calling the schedule check API
 async function shouldRunPostMatchRefresh() {
   try {
@@ -28,7 +35,7 @@ async function shouldRunPostMatchRefresh() {
       throw new Error(`HTTP error from schedule check! Status: ${response.status}`);
     }
 
-    const result = await response.json();
+    const result = await response.json() as ScheduleCheckResponse;
     
     // If schedule checking is disabled, we should run
     if (result.scheduleCheckingDisabled) {
