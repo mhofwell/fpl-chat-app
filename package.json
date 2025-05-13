@@ -5,11 +5,14 @@
     "private": true,
     "workspaces": [
         "types",
-        "packages/*",
-        "packages/cron/*"
+        "packages/*"
     ],
+    "packageManager": "npm@11.3.0",
     "scripts": {
-        "build": "npm run build --workspaces --if-present",
+        "build": "turbo run build",
+        "dev": "turbo run dev",
+        "lint": "turbo run lint",
+        "clean": "turbo run clean",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "repository": {
@@ -23,5 +26,8 @@
     "bugs": {
         "url": "https://github.com/mhofwell/fpl-chat-app/issues"
     },
-    "homepage": "https://github.com/mhofwell/fpl-chat-app#readme"
+    "homepage": "https://github.com/mhofwell/fpl-chat-app#readme",
+    "devDependencies": {
+        "turbo": "^2.5.3"
+    }
 }

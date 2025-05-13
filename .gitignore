@@ -42,3 +42,6 @@ dump.rdb
 # Logs
 logs
 *.log
+
+# Turbo
+.turbo/
