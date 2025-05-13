@@ -49,7 +49,6 @@ async function seedDatabase() {
             team_h_difficulty: fixture.team_h_difficulty,
             team_a_difficulty: fixture.team_a_difficulty,
             pulse_id: fixture.pulse_id,
-            last_updated: new Date().toISOString(),
         }));
 
         console.log(
@@ -79,7 +78,6 @@ async function seedDatabase() {
                 strength_defence_home: team.strength_defence_home,
                 strength_defence_away: team.strength_defence_away,
                 pulse_id: team.pulse_id,
-                last_updated: new Date().toISOString(),
             });
             if (error) {
                 console.error(`Error inserting team ${team.name}:`, error);
@@ -101,7 +99,6 @@ async function seedDatabase() {
                 average_entry_score: gameweek.average_entry_score,
                 highest_score: gameweek.highest_score,
                 is_player_stats_synced: false,
-                last_updated: new Date().toISOString(),
             });
             if (error) {
                 console.error(
@@ -123,7 +120,6 @@ async function seedDatabase() {
                 team_id: player.team_id,
                 element_type: player.element_type,
                 position: player.position,
-                last_updated: new Date().toISOString(),
             }));
             const { error } = await supabase.from('players').upsert(batch);
             if (error) {
@@ -167,6 +163,7 @@ async function seedDatabase() {
 
         for (const gameweek of completedGameweeks) {
             console.log(`Processing historical stats for ${gameweek.name}...`);
+            let gameweekStatsProcessedSuccessfully = false; // Initialize for each gameweek
 
             try {
                 // Get live data for the completed gameweek
@@ -174,18 +171,22 @@ async function seedDatabase() {
                     gameweek.id
                 );
 
-                if (liveData && liveData.elements) {
+                if (liveData && liveData.elements && Array.isArray(liveData.elements)) {
                     const playerStats = [];
 
-                    // Transform live data into player_gameweek_stats records
-                    for (const [elementId, data] of Object.entries(
-                        liveData.elements
-                    )) {
-                        const stats = data.stats;
+                    for (const elementDetail of liveData.elements) {
+                        const stats = elementDetail.stats;
+                        const currentPlayerId = elementDetail.id;
+                        const playerExistsInInitialList = players.some(p => p.id === currentPlayerId);
+
+                        if (!playerExistsInInitialList) {
+                            console.warn(`Player ID ${currentPlayerId} (from live data element.id) found in live gameweek data for GW ${gameweek.id} but not in initial player list. Skipping stats insertion for this player to avoid FK violation.`);
+                            continue;
+                        }
+
                         if (stats.minutes > 0) {
-                            // Only record if player played
                             playerStats.push({
-                                player_id: parseInt(elementId),
+                                player_id: currentPlayerId,
                                 gameweek_id: gameweek.id,
                                 minutes: stats.minutes || 0,
                                 goals_scored: stats.goals_scored || 0,
@@ -211,37 +212,75 @@ async function seedDatabase() {
                     }
 
                     // Insert stats in batches
-                    for (let i = 0; i < playerStats.length; i += BATCH_SIZE) {
-                        const batch = playerStats.slice(i, i + BATCH_SIZE);
-                        const { error } = await supabase
-                            .from('player_gameweek_stats')
-                            .upsert(batch, {
-                                onConflict: 'player_id, gameweek_id',
-                            });
+                    if (playerStats.length > 0) {
+                        let allBatchesSuccessful = true;
+                        for (let i = 0; i < playerStats.length; i += BATCH_SIZE) {
+                            const batch = playerStats.slice(i, i + BATCH_SIZE);
+                            const { error: batchError } = await supabase
+                                .from('player_gameweek_stats')
+                                .upsert(batch, {
+                                    onConflict: 'player_id, gameweek_id',
+                                });
 
-                        if (error) {
-                            console.error(
-                                `Error inserting player gameweek stats batch for ${gameweek.name}:`,
-                                error
-                            );
-                        } else {
-                            console.log(
-                                `Inserted ${batch.length} player gameweek stats for ${gameweek.name}`
+                            if (batchError) {
+                                console.error(
+                                    `Error inserting player gameweek stats batch for ${gameweek.name} (ID: ${gameweek.id}):`,
+                                    batchError
+                                );
+                                allBatchesSuccessful = false;
+                                break; // Stop processing batches for this gameweek if one fails
+                            } else {
+                                console.log(
+                                    `Inserted ${batch.length} player gameweek stats for ${gameweek.name} (ID: ${gameweek.id}) (Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(playerStats.length / BATCH_SIZE)})`
+                                );
+                            }
+                            // Add a small delay
+                            await new Promise((resolve) =>
+                                setTimeout(resolve, 1000)
                             );
                         }
-
-                        // Add a small delay
-                        await new Promise((resolve) =>
-                            setTimeout(resolve, 1000)
-                        );
+                        if (allBatchesSuccessful) {
+                            gameweekStatsProcessedSuccessfully = true;
+                        }
+                    } else {
+                        console.log(`No player stats with minutes > 0 to insert for ${gameweek.name} (ID: ${gameweek.id}). Marking as synced.`);
+                        gameweekStatsProcessedSuccessfully = true; // No stats to process, so effectively synced
                     }
+                } else {
+                     console.log(`No live data elements found for ${gameweek.name} (ID: ${gameweek.id}). Marking as synced if no stats were expected.`);
+                     // If liveData or liveData.elements is null/empty, but the gameweek is finished,
+                     // it implies no player activity, so we can consider it 'synced' in terms of player stats.
+                     gameweekStatsProcessedSuccessfully = true;
                 }
             } catch (error) {
                 console.error(
-                    `Error processing live data for ${gameweek.name}:`,
+                    `Error processing live data or inserting stats for ${gameweek.name} (ID: ${gameweek.id}):`,
                     error
                 );
-                // Continue with next gameweek even if one fails
+                // Keep gameweekStatsProcessedSuccessfully as false
+            }
+
+            // Update the is_player_stats_synced flag in the gameweeks table
+            if (gameweekStatsProcessedSuccessfully) {
+                const { error: updateGwError } = await supabase
+                    .from('gameweeks')
+                    .update({ is_player_stats_synced: true }) // Correctly relies on the DB trigger for updated_at
+                    .eq('id', gameweek.id);
+
+                if (updateGwError) {
+                    console.error(
+                        `Failed to update is_player_stats_synced for ${gameweek.name} (ID: ${gameweek.id}):`,
+                        updateGwError
+                    );
+                } else {
+                    console.log(
+                        `Successfully marked ${gameweek.name} (ID: ${gameweek.id}) as player_stats_synced.`
+                    );
+                }
+            } else {
+                 console.log(
+                    `Skipping update of is_player_stats_synced for ${gameweek.name} (ID: ${gameweek.id}) due to errors or no data.`
+                );
             }
         }
 
@@ -356,7 +395,6 @@ async function seedDatabase() {
                             full_name: user.user_metadata?.full_name || null,
                             avatar_url: null,
                             created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString(),
                         });
 
                     if (profileError) {
@@ -385,7 +423,6 @@ async function seedDatabase() {
                             dark_mode: false,
                             email_notifications: true,
                             created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString(),
                         });
 
                     if (prefError) {
@@ -419,7 +456,6 @@ async function seedDatabase() {
                             user_id: user.id,
                             title: 'Welcome to FPL Chat',
                             created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString(),
                         })
                         .select()
                         .single();

@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS teams (
     strength_defence_home INTEGER,
     strength_defence_away INTEGER,
     pulse_id INTEGER,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS players (
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS players (
     team_id INTEGER REFERENCES teams(id),
     element_type INTEGER, -- 1:GKP, 2:DEF, 3:MID, 4:FWD
     position VARCHAR(20), -- GKP, DEF, MID, FWD (derived from element_type)
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS gameweeks (
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS gameweeks (
     highest_score INTEGER,
     -- Add is_player_stats_synced column
     is_player_stats_synced BOOLEAN NOT NULL DEFAULT FALSE,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON COLUMN public.gameweeks.is_player_stats_synced IS 'Flag to indicate if player_gameweek_stats have been successfully synced for this gameweek.';
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS fixtures (
     team_h_difficulty INTEGER,
     team_a_difficulty INTEGER,
     pulse_id INTEGER,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Add table for historical player performance by gameweek
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS player_gameweek_stats (
     -- transfers_in INTEGER,
     -- transfers_out INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- To track when this specific record was last updated
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- To track when this specific record was last updated
     UNIQUE(player_id, gameweek_id)
 );
 
@@ -137,16 +137,9 @@ CREATE TABLE IF NOT EXISTS player_season_stats (
     ict_index TEXT,
     total_points INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(player_id, season_name)
 );
-
--- Create indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_players_team_id ON players(team_id);
-CREATE INDEX IF NOT EXISTS idx_fixtures_gameweek_id ON fixtures(gameweek_id);
-CREATE INDEX IF NOT EXISTS idx_fixtures_teams ON fixtures(home_team_id, away_team_id);
-CREATE INDEX IF NOT EXISTS idx_player_gameweek_stats_player_gw ON player_gameweek_stats(player_id, gameweek_id); -- Renamed for clarity
-CREATE INDEX IF NOT EXISTS idx_player_season_stats_player_season ON player_season_stats(player_id, season_name); -- Renamed for clarity
 
 -- Step 3: Set up user profiles and user preferences tables
 -- User profiles extend the auth.users table with additional information
@@ -188,10 +181,6 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for chat queries
-CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
-CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
-
 -- Table for refresh logs
 CREATE TABLE IF NOT EXISTS refresh_logs (
   id SERIAL PRIMARY KEY,
@@ -200,10 +189,6 @@ CREATE TABLE IF NOT EXISTS refresh_logs (
   details JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- Create index on refresh_logs for better query performance
-CREATE INDEX IF NOT EXISTS idx_refresh_logs_type ON refresh_logs(type);
-CREATE INDEX IF NOT EXISTS idx_refresh_logs_created_at ON refresh_logs(created_at);
 
 -- Table for system metadata (e.g., last FPL API sync time)
 CREATE TABLE IF NOT EXISTS system_meta (
@@ -222,10 +207,6 @@ CREATE TABLE IF NOT EXISTS dynamic_cron_schedule (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create index for faster queries on dynamic_cron_schedule
-CREATE INDEX IF NOT EXISTS idx_dynamic_cron_schedule_job_type ON dynamic_cron_schedule(job_type);
-CREATE INDEX IF NOT EXISTS idx_dynamic_cron_schedule_timerange ON dynamic_cron_schedule(start_time, end_time);
-
 -- Create system config table
 CREATE TABLE IF NOT EXISTS system_config (
   key VARCHAR(100) PRIMARY KEY,
@@ -234,20 +215,49 @@ CREATE TABLE IF NOT EXISTS system_config (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create indexes for common queries
+CREATE INDEX IF NOT EXISTS idx_players_team_id ON players(team_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_gameweek_id ON fixtures(gameweek_id);
+CREATE INDEX IF NOT EXISTS idx_fixtures_teams ON fixtures(home_team_id, away_team_id);
+CREATE INDEX IF NOT EXISTS idx_player_gameweek_stats_player_gw ON player_gameweek_stats(player_id, gameweek_id); -- Renamed for clarity
+CREATE INDEX IF NOT EXISTS idx_player_season_stats_player_season ON player_season_stats(player_id, season_name); -- Renamed for clarity
+
+-- Create indexes for chat queries
+CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+
+-- Create index on refresh_logs for better query performance
+CREATE INDEX IF NOT EXISTS idx_refresh_logs_type ON refresh_logs(type);
+CREATE INDEX IF NOT EXISTS idx_refresh_logs_created_at ON refresh_logs(created_at);
+
+-- Create index for faster queries on dynamic_cron_schedule
+CREATE INDEX IF NOT EXISTS idx_dynamic_cron_schedule_job_type ON dynamic_cron_schedule(job_type);
+CREATE INDEX IF NOT EXISTS idx_dynamic_cron_schedule_timerange ON dynamic_cron_schedule(start_time, end_time);
+
 -- Insert default config values
 INSERT INTO system_config (key, value, description)
 VALUES
   ('enable_dynamic_scheduling', 'true', 'Enable dynamic scheduling of cron jobs based on fixture times')
 ON CONFLICT (key) DO NOTHING; 
 
--- Step 5: Row Level Security policies to secure the data
 -- Enable Row Level Security for all relevant tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
--- Note: FPL data tables (teams, players, etc.) are typically public read, so RLS might not be applied
--- or applied with a policy that allows all authenticated users to read.
+
+-- Enable RLS for FPL data tables
+ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gameweeks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fixtures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.player_gameweek_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.player_season_stats ENABLE ROW LEVEL SECURITY;
+
+-- Enable RLS for other tables (if needed, e.g., system_config)
+ALTER TABLE public.refresh_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.system_meta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dynamic_cron_schedule ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for profiles
 CREATE POLICY "Users can view their own profile" 
@@ -280,6 +290,14 @@ CREATE POLICY "Users can view messages of their own chats"
 ON messages FOR SELECT USING (auth.uid() = (SELECT user_id FROM chats WHERE id = chat_id));
 CREATE POLICY "Users can insert messages to their own chats" 
 ON messages FOR INSERT WITH CHECK (auth.uid() = (SELECT user_id FROM chats WHERE id = chat_id));
+
+-- Policies for public FPL data tables
+CREATE POLICY "Allow public read access to teams" ON public.teams FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to players" ON public.players FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to gameweeks" ON public.gameweeks FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to fixtures" ON public.fixtures FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to player_gameweek_stats" ON public.player_gameweek_stats FOR SELECT USING (true);
+CREATE POLICY "Allow public read access to player_season_stats" ON public.player_season_stats FOR SELECT USING (true);
 
 -- Step 6: Functions and triggers for user management
 -- Function to create a profile and preferences when a new user signs up
@@ -347,7 +365,6 @@ CREATE TRIGGER update_system_meta_updated_at BEFORE UPDATE ON public.system_meta
 DROP TRIGGER IF EXISTS update_system_config_updated_at ON public.system_config;
 CREATE TRIGGER update_system_config_updated_at BEFORE UPDATE ON public.system_config FOR EACH ROW EXECUTE PROCEDURE public.update_updated_at_column();
 
-
 -- Create storage bucket for avatars if it doesn't exist
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('avatars', 'avatars', true, 5242880, ARRAY['image/jpeg', 'image/png', 'image/gif'])
@@ -355,7 +372,6 @@ ON CONFLICT (id) DO UPDATE SET
   public = EXCLUDED.public, 
   file_size_limit = EXCLUDED.file_size_limit, 
   allowed_mime_types = EXCLUDED.allowed_mime_types;
-
 
 -- Set up storage policies for avatars
 -- Ensure old policies are dropped before creating new ones to avoid conflicts
