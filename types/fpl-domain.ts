@@ -120,6 +120,7 @@ export interface Gameweek {
     data_checked: boolean;
     average_entry_score?: number;
     highest_score?: number;
+    is_player_stats_synced?: boolean; // Make this optional to avoid migration issues
     is_previous: boolean;
     last_updated?: string;
 }
