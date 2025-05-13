@@ -2,7 +2,6 @@
   "compilerOptions": {
     "target": "ES2022", 
     "module": "Node16", 
-    "declaration": true, 
     "emitDeclarationOnly": true, 
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -11,6 +10,7 @@
     "outDir": "./dist",
     "rootDir": ".",
     "declarationMap": true,
+    "declaration": true, 
     "composite": true
   },
   "include": [
