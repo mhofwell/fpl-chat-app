@@ -110,43 +110,63 @@ async function updateDatabaseFromCache(supabase: SupabaseClient) {
  */
 async function updateTeams(supabase: SupabaseClient, teams: Team[]) {
     try {
+        console.log(`Starting teams update with ${teams.length} teams`);
+        
+        // Log first team data to verify structure
+        if (teams.length > 0) {
+            console.log('Sample team data:', JSON.stringify(teams[0], null, 2));
+        }
+        
         // Process in batches for better performance
         for (let i = 0; i < teams.length; i += BATCH_SIZE) {
             const batch = teams.slice(i, i + BATCH_SIZE);
+            console.log(`Processing teams batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(teams.length/BATCH_SIZE)}`);
             
-            // Create batch of team records for upsert
+            // Create batch of team records for upsert - Include only essential reference fields
+            // and provide defaults for nullable fields to avoid DB constraints
             const teamRecords = batch.map(team => ({
                 id: team.id,
                 name: team.name,
                 short_name: team.short_name,
-                code: team.code,
-                form: team.form,
-                played: team.played,
-                points: team.points,
-                position: team.position,
-                strength: team.strength,
-                strength_attack_home: team.strength_attack_home,
-                strength_attack_away: team.strength_attack_away,
-                strength_defence_home: team.strength_defence_home,
-                strength_defence_away: team.strength_defence_away,
-                win: team.win,
-                loss: team.loss,
-                draw: team.draw,
-                strength_overall_home: team.strength_overall_home,
-                strength_overall_away: team.strength_overall_away,
-                pulse_id: team.pulse_id,
+                code: team.code || 0,
+                form: team.form || null,  // Allow null as per DB
+                played: team.played || 0,
+                points: team.points || 0,
+                position: team.position || 0,
+                strength: team.strength || 0,
+                strength_attack_home: team.strength_attack_home || 0,
+                strength_attack_away: team.strength_attack_away || 0,
+                strength_defence_home: team.strength_defence_home || 0,
+                strength_defence_away: team.strength_defence_away || 0,
+                win: team.win || 0,
+                loss: team.loss || 0,
+                draw: team.draw || 0,
+                strength_overall_home: team.strength_overall_home || 0,
+                strength_overall_away: team.strength_overall_away || 0,
+                pulse_id: team.pulse_id || 0,
+                unavailable: team.unavailable === true ? true : false,  // Explicitly handle boolean
+                team_division: null,  // Always null for PL teams as per schema
             }));
             
             const { error } = await supabase
                 .from('teams')
                 .upsert(teamRecords, { onConflict: 'id' });
                 
-            if (error) throw error;
+            if (error) {
+                console.error(`Teams upsert error for batch ${Math.floor(i/BATCH_SIZE) + 1}:`, JSON.stringify(error, null, 2));
+                throw error;
+            }
         }
         console.log('Teams updated successfully');
     } catch (error) {
-        console.error('Error updating teams:', error);
-        throw error;
+        console.error('Error updating teams - Full error details:', JSON.stringify(error, null, 2));
+        // Provide more detailed error information
+        const errorMessage = error instanceof Error 
+            ? error.message 
+            : typeof error === 'object' && error !== null && 'message' in error
+            ? String(error.message)
+            : JSON.stringify(error);
+        throw new Error(`Teams update failed: ${errorMessage}`);
     }
 }
 
@@ -615,8 +635,13 @@ export async function syncBootstrapDerivedTablesFromApiData(
             await updateTeams(supabase, teamsToUpdate);
             console.log('Teams table updated successfully');
         } catch (teamsError) {
-            console.error('Error updating teams table:', teamsError);
-            throw new Error(`Teams update failed: ${teamsError instanceof Error ? teamsError.message : 'Unknown error'}`);
+            console.error('Error updating teams table - Full error:', JSON.stringify(teamsError, null, 2));
+            const errorMessage = teamsError instanceof Error 
+                ? teamsError.message 
+                : typeof teamsError === 'object' && teamsError !== null && 'message' in teamsError
+                ? String(teamsError.message)
+                : JSON.stringify(teamsError);
+            throw new Error(`Teams update failed: ${errorMessage}`);
         }
         
         try {

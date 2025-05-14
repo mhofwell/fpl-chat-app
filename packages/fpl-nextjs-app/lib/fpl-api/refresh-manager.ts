@@ -715,6 +715,23 @@ export class RefreshManager {
                     const supabase = createAdminSupabaseClient();
                     console.log('Created admin Supabase client for database operations');
                     
+                    // Test the connection with a simple query
+                    try {
+                        const { data: testData, error: testError } = await supabase
+                            .from('teams')
+                            .select('count')
+                            .limit(1);
+                        
+                        if (testError) {
+                            console.error('Admin client connection test failed:', testError);
+                            throw new Error(`Database connection failed: ${testError.message}`);
+                        }
+                        console.log('Admin client connection test successful');
+                    } catch (connError) {
+                        console.error('Failed to connect to database:', connError);
+                        throw connError;
+                    }
+                    
                     // Sync database tables
                     const syncResult = await syncBootstrapDerivedTablesFromApiData(supabase, freshBootstrapStaticData);
                     console.log('Bootstrap-derived DB tables synced successfully:', syncResult);

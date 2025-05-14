@@ -48,3 +48,4 @@ logs
 
 # Cursor editor configuration
 .cursor/
+**/.claude/settings.local.json
