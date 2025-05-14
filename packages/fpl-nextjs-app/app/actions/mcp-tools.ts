@@ -21,12 +21,46 @@ type ToolResult = {
  * Initialize a new MCP session
  */
 export async function initializeMcpSession(retryCount = 3): Promise<string | undefined> {
-    const MCP_SERVER_URL =
-        process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
+    let MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
+    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || '3001';
+    
+    // Ensure URL has protocol
+    if (!MCP_SERVER_URL.startsWith('http://') && !MCP_SERVER_URL.startsWith('https://')) {
+        MCP_SERVER_URL = `http://${MCP_SERVER_URL}`;
+    }
+    
+    // Append port if not already included in URL
+    if (!MCP_SERVER_URL.includes(':3001') && !MCP_SERVER_URL.includes(':8080') && !MCP_SERVER_URL.includes(`:${MCP_SERVER_PORT}`)) {
+        MCP_SERVER_URL = `${MCP_SERVER_URL}:${MCP_SERVER_PORT}`;
+    }
+
+    console.log(`MCP Server URL: ${MCP_SERVER_URL}`);
+    console.log(`Environment: ${process.env.NODE_ENV}`);
+    console.log(`Railway Environment: ${process.env.RAILWAY_ENVIRONMENT_NAME}`);
 
     for (let attempt = 1; attempt <= retryCount; attempt++) {
         try {
             console.log(`Initializing MCP session (attempt ${attempt}/${retryCount})`);
+            
+            // Test if we can reach the MCP server
+            try {
+                const healthCheck = await fetch(`${MCP_SERVER_URL}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                console.log(`Health check response: ${healthCheck.status}`);
+                
+                if (!healthCheck.ok) {
+                    console.error(`MCP server health check failed: ${healthCheck.status}`);
+                    throw new Error(`MCP server not healthy: ${healthCheck.status}`);
+                }
+            } catch (healthError) {
+                console.error('Failed to reach MCP server health check:', healthError);
+                throw new Error(`MCP server unreachable at ${MCP_SERVER_URL}: ${healthError.message}`);
+            }
             
             // Send a compliant MCP initialize request
             const response = await fetch(`${MCP_SERVER_URL}/mcp`, {
@@ -52,6 +86,9 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
                     id: 1,
                 }),
             });
+
+            console.log(`Initialize response status: ${response.status}`);
+            console.log(`Initialize response headers:`, Object.fromEntries(response.headers.entries()));
 
             // Get the session ID from response headers
             const sessionId = response.headers.get('mcp-session-id');
@@ -83,6 +120,11 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
             return sessionId;
         } catch (error) {
             console.error(`Error initializing MCP session (attempt ${attempt}/${retryCount}):`, error);
+            console.error(`Error details:`, {
+                message: error.message,
+                stack: error.stack,
+                cause: error.cause
+            });
             
             // Only retry if we haven't reached max attempts
             if (attempt < retryCount) {
@@ -101,8 +143,19 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
  * Server-side MCP client that communicates with the MCP Express server
  */
 async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
-    const MCP_SERVER_URL =
-        process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
+    let MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
+    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || '3001';
+    
+    // Ensure URL has protocol
+    if (!MCP_SERVER_URL.startsWith('http://') && !MCP_SERVER_URL.startsWith('https://')) {
+        MCP_SERVER_URL = `http://${MCP_SERVER_URL}`;
+    }
+    
+    // Append port if not already included in URL
+    if (!MCP_SERVER_URL.includes(':3001') && !MCP_SERVER_URL.includes(':8080') && !MCP_SERVER_URL.includes(`:${MCP_SERVER_PORT}`)) {
+        MCP_SERVER_URL = `${MCP_SERVER_URL}:${MCP_SERVER_PORT}`;
+    }
+    
     const TIMEOUT_MS = 10000; // 10 second timeout
 
     try {
