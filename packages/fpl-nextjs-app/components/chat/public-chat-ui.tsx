@@ -201,7 +201,7 @@ export default function ChatUI() {
                         ...prev,
                         {
                             role: 'assistant',
-                            content: response.answer,
+                            content: response.answer || '',
                         },
                     ]);
                 }
