@@ -181,8 +181,9 @@ RESPONSE GUIDELINES:
                 toolCall.input = JSON.parse(toolCall.inputJson);
                 sendEvent('tool-processing', { name: toolCall.name });
                 
-                // Execute the tool
+                // Execute the tool and store result
                 const result = await callMcpTool(toolCall.name, toolCall.input, validSessionId);
+                toolCall.result = result; // Store for later use
                 
                 if (result.success) {
                   sendEvent('tool-result', { 
@@ -208,32 +209,48 @@ RESPONSE GUIDELINES:
 
         // If there were tool calls, send a follow-up message
         if (toolCalls.length > 0) {
-          const toolResults = await Promise.all(
-            toolCalls.map(async (toolCall) => {
-              const result = await callMcpTool(toolCall.name, toolCall.input, validSessionId);
+          console.log('Processing tool calls for follow-up:', toolCalls.length);
+          
+          const toolResults = toolCalls
+            .filter(toolCall => toolCall.result) // Only include tool calls with results
+            .map((toolCall) => {
+              // Use already executed results
+              const result = toolCall.result;
+              console.log(`Tool result for ${toolCall.name}:`, result.success ? 'success' : 'error');
               return {
                 type: 'tool_result' as const,
                 tool_use_id: toolCall.id,
                 content: result.success ? JSON.stringify(result.result) : JSON.stringify({ error: result.error })
               };
-            })
-          );
+            });
+          
+          console.log('Tool results prepared:', toolResults.length);
 
           // Send a follow-up message with the tool results
+          const assistantContent: any[] = [
+            // Include any text response from first stream
+            ...(completeResponse ? [{ type: 'text', text: completeResponse }] : []),
+            // Include tool use blocks
+            ...toolCalls.map(tc => ({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: tc.input
+            }))
+          ];
+
+          console.log('Creating follow-up stream with messages');
+          
           const followUpStream = await anthropic.messages.create({
             model: CLAUDE_CONFIG.MODEL_VERSION,
             max_tokens: CLAUDE_CONFIG.MAX_TOKENS_EXTENDED,
             system: CLAUDE_SYSTEM_PROMPT,
             messages: [
+              ...contextMessages,
               { role: 'user', content: message },
               { 
                 role: 'assistant',
-                content: toolCalls.map(tc => ({
-                  type: 'tool_use' as const,
-                  id: tc.id,
-                  name: tc.name,
-                  input: tc.input
-                }))
+                content: assistantContent
               },
               {
                 role: 'user',
@@ -242,13 +259,21 @@ RESPONSE GUIDELINES:
             ],
             stream: true,
           });
+          
+          console.log('Follow-up stream created, processing chunks...');
 
           for await (const chunk of followUpStream) {
-            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+            if (chunk.type === 'content_block_start' && chunk.content_block.type === 'text') {
+              sendEvent('start', { type: 'text' });
+            } else if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               completeResponse += chunk.delta.text;
               sendEvent('text', { content: chunk.delta.text });
+            } else if (chunk.type === 'content_block_stop') {
+              // Content block finished
             }
           }
+          
+          console.log('Follow-up stream completed');
         }
 
         // Store Claude's response for authenticated user
