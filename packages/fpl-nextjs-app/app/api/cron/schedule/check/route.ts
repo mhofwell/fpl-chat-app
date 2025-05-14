@@ -14,10 +14,22 @@ export async function GET(request: Request) {
 
     // Validate job type
     if (!jobType || !['live-update', 'post-match'].includes(jobType)) {
+        // For invalid job types, check if dynamic scheduling is enabled
+        // If it's not a recognized dynamic job type, the job runs normally
+        const supabase = await createClient();
+        const { data: config } = await supabase
+            .from('system_config')
+            .select('value')
+            .eq('key', 'enable_dynamic_scheduling')
+            .single();
+
+        const dynamicSchedulingEnabled = config?.value === 'true';
+        
         return NextResponse.json({ 
-            error: 'Invalid job type', 
-            scheduleCheckingDisabled: true // Default to running the job
-        }, { status: 400 });
+            error: 'Invalid job type for dynamic scheduling', 
+            scheduleCheckingDisabled: !dynamicSchedulingEnabled,
+            shouldRun: true // Non-dynamic jobs always run
+        }, { status: 200 }); // Return 200 to avoid error handling
     }
 
     try {

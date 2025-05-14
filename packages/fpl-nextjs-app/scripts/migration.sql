@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS teams (
     team_division INTEGER, -- Usually null for PL
     unavailable BOOLEAN,
     win INTEGER,
+    draw INTEGER, -- Number of matches drawn by the team
     strength_overall_home INTEGER,
     strength_overall_away INTEGER,
     strength_attack_home INTEGER,
