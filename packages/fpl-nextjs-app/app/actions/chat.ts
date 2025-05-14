@@ -638,11 +638,12 @@ export async function processUserMessage(
 
 /**
  * Process a user message with streaming response
+ * Note: Streaming is temporarily disabled due to Next.js server component limitations
  */
 export async function processUserMessageStreaming(
   chatId: string | null,
   message: string,
-  streamHandler: (chunk: string, done: boolean, toolCall?: {name: string}) => void,
+  streamHandler: any, // Accepting but not using to maintain API compatibility
   mcpSessionId?: string,
   userIp?: string
 ): Promise<{
@@ -650,10 +651,13 @@ export async function processUserMessageStreaming(
   chatId: string;
   mcpSessionId?: string;
   error?: string;
+  answer?: string;
 }> {
+  // For now, we'll use the non-streaming approach
+  // TODO: Implement proper streaming using Server-Sent Events or WebSockets
+  console.log('Streaming temporarily disabled - using standard processing');
   return processUserMessage(chatId, message, mcpSessionId, {
-    enableStreaming: true,
-    streamHandler,
+    enableStreaming: false,
     userIp
   });
 }

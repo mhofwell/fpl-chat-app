@@ -177,7 +177,7 @@ export default function ChatUI() {
 
         try {
             if (enableStreaming) {
-                // Process message with streaming
+                // Process message with streaming (temporarily using non-streaming fallback)
                 const response = await processUserMessageStreaming(
                     chatId,
                     messageToSend,
@@ -193,6 +193,17 @@ export default function ChatUI() {
                 if (response.mcpSessionId && response.mcpSessionId !== mcpSessionId) {
                     setMcpSessionId(response.mcpSessionId);
                     localStorage.setItem('mcp-session-id', response.mcpSessionId);
+                }
+
+                if (response.success && response.answer) {
+                    // Since streaming is disabled, add the complete response
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            role: 'assistant',
+                            content: response.answer,
+                        },
+                    ]);
                 }
 
                 if (!response.success) {
