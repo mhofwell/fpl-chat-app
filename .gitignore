@@ -42,3 +42,9 @@ dump.rdb
 # Logs
 logs
 *.log
+
+# Turborepo
+.turbo
+
+# Cursor
+.cursor
