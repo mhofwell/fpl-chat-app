@@ -46,9 +46,7 @@ async function fetchWithStandardHeaders(url: string, requestDescription: string)
         const response = await fetch(url, {
             method: 'GET',
             headers: standardHeaders,
-            credentials: 'omit',  // Don't send cookies
-            // Implements retry logic for 429 (too many requests) errors
-            retry: 3
+            credentials: 'omit'  // Don't send cookies
         });
 
         if (!response.ok) {
