@@ -239,8 +239,8 @@ async function updateGameweeks(supabase: SupabaseClient, gameweeks: Gameweek[]) 
                 data_checked: gameweek.data_checked || false,
                 is_previous: gameweek.is_previous || false,
                 average_entry_score: gameweek.average_entry_score || 0,
-                // Preserve is_player_stats_synced if it exists
-                is_player_stats_synced: gameweek.is_player_stats_synced
+                // Preserve is_player_stats_synced if it exists, default to false for new records
+                is_player_stats_synced: gameweek.is_player_stats_synced ?? false
             }));
             
             const { error } = await supabase
@@ -626,6 +626,7 @@ export async function syncBootstrapDerivedTablesFromApiData(
             is_previous: apiEvent.is_previous,
             average_entry_score: apiEvent.average_entry_score,
             // Preserve existing is_player_stats_synced if we're updating
+            is_player_stats_synced: false,  // Default to false for bootstrap sync
             last_updated: new Date().toISOString(),
         }));
 
