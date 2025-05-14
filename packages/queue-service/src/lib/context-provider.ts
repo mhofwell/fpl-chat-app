@@ -53,10 +53,10 @@ async function getCurrentGameweek() {
 
 // Get last refresh time for a specific job type
 async function getLastRefreshTime(jobType: string) {
+  // Map queue name to refresh type for log lookup
+  const refreshType = REFRESH_TYPES[jobType] || jobType;
+  
   try {
-    // Map queue name to refresh type for log lookup
-    const refreshType = REFRESH_TYPES[jobType] || jobType;
-    
     // Use .maybeSingle() instead of .single() to avoid error when no rows found
     // Look for any successful state, not just 'completed'
     const successStates = ['completed', 'regular', 'live-match', 'post-match', 'pre-deadline', 'full_success', 'manual_success'];
