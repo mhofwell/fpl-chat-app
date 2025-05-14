@@ -123,7 +123,7 @@ async function updateTeams(supabase: SupabaseClient, teams: Team[]) {
             console.log(`Processing teams batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(teams.length/BATCH_SIZE)}`);
             
             // Create batch of team records for upsert - Include only essential reference fields
-            // and provide defaults for nullable fields to avoid DB constraints
+            // Skip problematic columns until schema cache is refreshed
             const teamRecords = batch.map(team => ({
                 id: team.id,
                 name: team.name,
@@ -140,12 +140,13 @@ async function updateTeams(supabase: SupabaseClient, teams: Team[]) {
                 strength_defence_away: team.strength_defence_away || 0,
                 win: team.win || 0,
                 loss: team.loss || 0,
-                draw: team.draw || 0,
+                // Temporarily skip fields causing schema cache issues
+                // draw: team.draw || 0,  // Re-enable after schema cache refresh
                 strength_overall_home: team.strength_overall_home || 0,
                 strength_overall_away: team.strength_overall_away || 0,
                 pulse_id: team.pulse_id || 0,
                 unavailable: team.unavailable === true ? true : false,  // Explicitly handle boolean
-                team_division: null,  // Always null for PL teams as per schema
+                // team_division: null,  // Re-enable after schema cache refresh
             }));
             
             const { error } = await supabase

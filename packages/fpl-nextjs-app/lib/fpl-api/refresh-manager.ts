@@ -219,6 +219,7 @@ export class RefreshManager {
         state: string,
         details?: any
     ): Promise<void> {
+        console.log(`Logging refresh: type=${type}, state=${state}`);
         try {
             // Use admin client for better permissions
             const supabase = createAdminSupabaseClient();
@@ -787,10 +788,15 @@ export class RefreshManager {
                 }
             } else {
                 console.log('Bootstrap-static data unchanged, no update needed.');
+                
+                // Log even when data is unchanged
+                const unchangedDetails = { dbSyncStatus: 'Bootstrap-static data unchanged' };
+                await this.logRefresh('incremental', currentState.state, unchangedDetails);
+                
                 return {
                     refreshed: false,
                     state: currentState.state,
-                    details: { dbSyncStatus: 'Bootstrap-static data unchanged' },
+                    details: unchangedDetails,
                 };
             }
         } catch (error) {
