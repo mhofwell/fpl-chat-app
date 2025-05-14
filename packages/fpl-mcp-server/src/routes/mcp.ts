@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
 import {
-    createMcpServer,
     createTransport,
     getTransport,
+    storeServer,
+    getServer,
 } from '../lib/mcp-server';
+import { createMcpServer } from '../server';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'crypto';
 
@@ -34,6 +36,7 @@ router.post('/', async (req: Request, res: Response) => {
             const transport = await createTransport(newSessionId);
             const server = createMcpServer();
             await server.connect(transport);
+            storeServer(newSessionId, server);
 
             // Set session ID in response header
             res.setHeader('mcp-session-id', newSessionId);
@@ -48,13 +51,14 @@ router.post('/', async (req: Request, res: Response) => {
         // For existing sessions
         if (sessionId) {
             const transport = await getTransport(sessionId);
+            const server = getServer(sessionId);
 
-            if (transport) {
+            if (transport && server) {
                 console.log(`Using existing session: ${sessionId}`);
                 await transport.handleRequest(req, res, req.body);
                 return; // Important: return here to end the function
             } else {
-                console.log(`No transport found for session: ${sessionId}`);
+                console.log(`No transport or server found for session: ${sessionId}`);
             }
         }
 

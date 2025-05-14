@@ -6,6 +6,7 @@ import redis from './redis/redis-client';
 
 // In-memory session storage (with Redis backup)
 const sessions: Record<string, StreamableHTTPServerTransport> = {};
+const servers: Record<string, McpServer> = {};
 
 // Create MCP server
 export const createMcpServer = () => {
@@ -34,6 +35,7 @@ export const createTransport = async (
     // Setup cleanup when transport is closed
     transport.onclose = async () => {
         delete sessions[sessionId];
+        delete servers[sessionId];
         await redis.del(`mcp:session:${sessionId}:active`);
         console.log(`Session ${sessionId} closed and removed from Redis`);
     };
@@ -70,6 +72,16 @@ export const getTransport = async (
         // Store it in memory
         sessions[sessionId] = transport;
         
+        // Create and connect a new server if it doesn't exist
+        if (!servers[sessionId]) {
+            // Import createMcpServer here to avoid circular dependency
+            const { createMcpServer } = await import('../server.js');
+            const server = createMcpServer();
+            await server.connect(transport);
+            servers[sessionId] = server;
+            console.log(`Recreated server for session ${sessionId}`);
+        }
+        
         // Refresh Redis TTL
         await redis.expire(`mcp:session:${sessionId}:active`, 86400);
         
@@ -78,6 +90,16 @@ export const getTransport = async (
     
     console.log(`Session ${sessionId} not found in memory or Redis`);
     return undefined;
+};
+
+// Store server instance for session
+export const storeServer = (sessionId: string, server: McpServer): void => {
+    servers[sessionId] = server;
+};
+
+// Get server instance for session
+export const getServer = (sessionId: string): McpServer | undefined => {
+    return servers[sessionId];
 };
 
 // Get all active session IDs
