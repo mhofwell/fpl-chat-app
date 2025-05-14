@@ -225,21 +225,35 @@ RESPONSE GUIDELINES:
             });
           
           console.log('Tool results prepared:', toolResults.length);
+          
+          // Ensure we have tool results
+          if (toolResults.length === 0) {
+            console.error('No tool results to send in follow-up');
+            sendEvent('done', { complete: true });
+            controller.close();
+            return;
+          }
 
           // Send a follow-up message with the tool results
           const assistantContent: any[] = [
-            // Include any text response from first stream
-            ...(completeResponse ? [{ type: 'text', text: completeResponse }] : []),
-            // Include tool use blocks
+            // Include tool use blocks (not text from first stream)
             ...toolCalls.map(tc => ({
-              type: 'tool_use',
+              type: 'tool_use' as const,
               id: tc.id,
               name: tc.name,
               input: tc.input
             }))
           ];
+          
+          // Ensure assistant content is not empty
+          if (assistantContent.length === 0) {
+            console.error('No tool use content to send in follow-up');
+            return;
+          }
 
           console.log('Creating follow-up stream with messages');
+          console.log('Assistant content:', JSON.stringify(assistantContent, null, 2));
+          console.log('Tool results content:', JSON.stringify(toolResults, null, 2));
           
           const followUpStream = await anthropic.messages.create({
             model: CLAUDE_CONFIG.MODEL_VERSION,
@@ -254,7 +268,11 @@ RESPONSE GUIDELINES:
               },
               {
                 role: 'user',
-                content: toolResults
+                content: toolResults.map(tr => ({
+                  type: 'tool_result' as const,
+                  tool_use_id: tr.tool_use_id,
+                  content: tr.content
+                }))
               }
             ],
             stream: true,
