@@ -2,6 +2,7 @@
 
 import { fplApiService } from './service';
 import { createClient } from '@/utils/supabase/server';
+import { createAdminSupabaseClient } from '@/utils/supabase/admin-client';
 import redis from '../redis/redis-client';
 import { cacheInvalidator } from './cache-invalidator';
 import { syncBootstrapDerivedTablesFromApiData, syncFplData } from './fpl-data-sync';
