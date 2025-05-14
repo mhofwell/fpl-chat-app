@@ -37,7 +37,8 @@ function ensurePort(url: string, defaultPort?: string): string {
     if (!urlObj.port) {
       urlObj.port = envPort;
     }
-    return urlObj.toString();
+    // Remove trailing slash if present
+    return urlObj.toString().replace(/\/$/, '');
   } catch {
     // If URL parsing fails, append port manually
     if (!url.includes(':3001') && !url.includes(':8080') && !url.includes(`:${envPort}`)) {
