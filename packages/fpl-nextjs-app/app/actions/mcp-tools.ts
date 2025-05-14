@@ -22,9 +22,12 @@ type ToolResult = {
  * Initialize a new MCP session
  */
 export async function initializeMcpSession(retryCount = 3): Promise<string | undefined> {
-    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE;
+    // Get MCP server URL with fallback
+    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 
+        (process.env.RAILWAY_ENVIRONMENT_NAME ? 'http://fpl-mcp-server.railway.internal:8080' : 'http://localhost:3001');
 
-    console.log(`MCP Server URL: ${MCP_SERVER_URL}`);
+    console.log(`EXPRESS_MCP_SERVER_PRIVATE env var: "${process.env.EXPRESS_MCP_SERVER_PRIVATE}"`);
+    console.log(`Using MCP Server URL: "${MCP_SERVER_URL}"`);
     console.log(`Environment: ${process.env.NODE_ENV}`);
     console.log(`Railway Environment: ${process.env.RAILWAY_ENVIRONMENT_NAME}`);
 
@@ -57,7 +60,10 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
             
             // Send a compliant MCP initialize request
             const mcpEndpoint = buildMcpUrl(MCP_SERVER_URL, 'mcp');
+            console.log(`Building MCP endpoint from URL: "${MCP_SERVER_URL}" with path "mcp"`);
+            console.log(`Result MCP endpoint: "${mcpEndpoint}"`);
             console.log(`Attempting to connect to MCP endpoint: ${mcpEndpoint}`);
+            
             const response = await fetch(mcpEndpoint, {
                 method: 'POST',
                 headers: { 
@@ -138,7 +144,9 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
  * Server-side MCP client that communicates with the MCP Express server
  */
 async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
-    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE;
+    // Get MCP server URL with fallback
+    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 
+        (process.env.RAILWAY_ENVIRONMENT_NAME ? 'http://fpl-mcp-server.railway.internal:8080' : 'http://localhost:3001');
     
     const TIMEOUT_MS = 10000; // 10 second timeout
 
@@ -170,8 +178,11 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
 
         try {
             // Call the MCP server endpoint with timeout
+            console.log(`[callMcpServerTool] MCP_SERVER_URL before building: "${MCP_SERVER_URL}"`);
             const mcpEndpoint = buildMcpUrl(MCP_SERVER_URL, 'mcp');
-            console.log(`Calling MCP server at: ${mcpEndpoint}`);
+            console.log(`[callMcpServerTool] Built MCP endpoint: "${mcpEndpoint}"`);
+            console.log(`[callMcpServerTool] Calling MCP server at: ${mcpEndpoint}`);
+            
             const fetchPromise = fetch(mcpEndpoint, {
                 method: 'POST',
                 headers: {
@@ -280,6 +291,9 @@ export async function callMcpTool(
     sessionId?: string
 ) {
     try {
+        console.log(`[callMcpTool] Called with tool: ${toolName}, sessionId: ${sessionId}`);
+        console.log(`[callMcpTool] EXPRESS_MCP_SERVER_PRIVATE: "${process.env.EXPRESS_MCP_SERVER_PRIVATE}"`);
+        
         // If no session ID provided or session validation fails, initialize a new one
         if (!sessionId) {
             console.log('No session ID provided, initializing a new MCP session');

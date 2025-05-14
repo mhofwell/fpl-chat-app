@@ -1,41 +1,44 @@
 export function buildMcpUrl(baseUrl: string | undefined, endpoint: string = ''): string {
-    // Use default URL if not provided
-    let url = baseUrl || 'http://localhost:3001';
-    
     // In Railway production, the MCP server typically runs on port 8080
     const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
     const defaultPort = isRailway ? '8080' : '3001';
-    const mcpPort = process.env.EXPRESS_MCP_SERVER_PORT || defaultPort;
+    const defaultUrl = isRailway ? 'http://fpl-mcp-server.railway.internal:8080' : 'http://localhost:3001';
     
-    // Parse URL components
-    const urlPattern = /^(https?:\/\/)?([^:\/]+)(:\d+)?(\/.*)?$/;
-    const match = url.match(urlPattern);
+    console.log(`[buildMcpUrl] Input baseUrl: "${baseUrl}"`);
+    console.log(`[buildMcpUrl] Input endpoint: "${endpoint}"`);
     
-    if (!match) {
-        throw new Error(`Invalid URL format: ${url}`);
+    // Use default URL if not provided
+    let url = baseUrl || defaultUrl;
+    
+    // Handle empty or null baseUrl
+    if (!baseUrl || baseUrl.trim() === '') {
+        url = defaultUrl;
+        console.log(`[buildMcpUrl] Using default URL: "${url}"`);
     }
     
-    const protocol = match[1] || 'http://';
-    const host = match[2];
-    const port = match[3] || `:${mcpPort}`;
-    const existingPath = match[4] || '';
+    // Clean up URL - remove any leading/trailing whitespace
+    url = url.trim();
     
-    // Normalize paths by removing leading/trailing slashes
-    const normalizedExistingPath = existingPath.replace(/^\/+|\/+$/g, '');
-    const normalizedEndpoint = endpoint.replace(/^\/+|\/+$/g, '');
+    // Simple URL building - just append endpoint with single slash
+    let finalUrl = url;
     
-    // Build the final URL carefully
-    let finalUrl = `${protocol}${host}${port}`;
-    
-    // Add paths if they exist
-    if (normalizedExistingPath) {
-        finalUrl += `/${normalizedExistingPath}`;
+    // Remove trailing slash from base URL
+    if (finalUrl.endsWith('/')) {
+        finalUrl = finalUrl.slice(0, -1);
     }
     
-    if (normalizedEndpoint) {
-        finalUrl += `/${normalizedEndpoint}`;
+    // Add endpoint if provided
+    if (endpoint) {
+        // Remove leading slashes from endpoint
+        endpoint = endpoint.replace(/^\/+/, '');
+        
+        // Don't add duplicate endpoints
+        if (!finalUrl.endsWith(`/${endpoint}`)) {
+            finalUrl = `${finalUrl}/${endpoint}`;
+        }
     }
     
+    console.log(`[buildMcpUrl] Final URL: "${finalUrl}"`);
     return finalUrl;
 }
 

@@ -9,5 +9,5 @@ export const config = {
     nextjsUrl:
         `http://${process.env.NEXT_CLIENT_PRIVATE_URL}:${process.env.NEXT_CLIENT_PORT}` ||
         'http://localhost:3000',
-    appEnv: process.env.NODE_ENV || 'development',
+    appEnv: process.env.RAILWAY_ENVIRONMENT_NAME || 'development',
 };
