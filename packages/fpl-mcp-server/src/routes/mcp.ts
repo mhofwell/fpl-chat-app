@@ -4,8 +4,8 @@ import {
     getTransport,
     storeServer,
     getServer,
+    createMcpServerWithTools,
 } from '../lib/mcp-server';
-import { createMcpServer } from '../server';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'crypto';
 
@@ -34,7 +34,7 @@ router.post('/', async (req: Request, res: Response) => {
 
             // Create transport and connect to server
             const transport = await createTransport(newSessionId);
-            const server = createMcpServer();
+            const server = createMcpServerWithTools();
             await server.connect(transport);
             storeServer(newSessionId, server);
 

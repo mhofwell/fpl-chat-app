@@ -511,6 +511,10 @@ export class RefreshManager {
 
             // Do a standard refresh of all data
             await fplApiService.updateAllData();
+            
+            // Also populate enriched player cache
+            await fplApiService.getPlayers();
+            console.log('Enriched player cache populated during regular refresh.');
 
             // Log the refresh
             await this.logRefresh('regular', state.state, state.details);
@@ -541,6 +545,10 @@ export class RefreshManager {
             // 1. Refresh all FPL data in Redis cache via fplApiService
             await fplApiService.updateAllData();
             console.log('All Redis caches updated via fplApiService.updateAllData().');
+            
+            // 1a. Populate enriched player cache with performance history
+            await fplApiService.getPlayers();
+            console.log('Enriched player cache populated with performance history.');
 
             // 2. Perform a full database synchronization using fpl-data-sync
             // This will update all relevant DB tables (teams, players, gameweeks, fixtures)

@@ -85,17 +85,22 @@ export async function compareEntities(params: CompareEntitiesParams, _extra: any
     const dataTimestamp = new Date().toISOString();
 
     try {
-        const [playersCached, teamsCached, fixturesCached, /* gameweeksCached - if needed for GW context */] = await Promise.all([
-            redis.get('fpl:players'),
+        // Try to get enriched players first, fall back to basic
+        const [playersCached, teamsCached, fixturesCached, enrichedPlayersCached] = await Promise.all([
+            redis.get('fpl:players:basic'),
             redis.get('fpl:teams'),
-            redis.get('fpl:fixtures'),
+            redis.get('fpl:fixtures:all'),
+            redis.get('fpl:players:enriched')
         ]);
 
         if (!teamsCached) return createStructuredErrorResponse('Core teams data not found in cache.', 'CACHE_ERROR', ['Ensure FPL data sync is active.']);
-        if (entityType === 'player' && !playersCached) return createStructuredErrorResponse('Core players data not found in cache.', 'CACHE_ERROR', ['Ensure FPL data sync is active.']);
+        
+        const playersSource = enrichedPlayersCached || playersCached;
+        if (entityType === 'player' && !playersSource) return createStructuredErrorResponse('Core players data not found in cache.', 'CACHE_ERROR', ['Ensure FPL data sync is active.']);
         if (!fixturesCached) return createStructuredErrorResponse('Core fixtures data not found in cache (needed for H2H/upcoming).', 'CACHE_ERROR', ['Ensure FPL data sync is active.']);
 
-        const allPlayers: Player[] = playersCached ? JSON.parse(playersCached) : [];
+        const allPlayers: Player[] = playersSource ? JSON.parse(playersSource) : [];
+        const isEnriched = !!enrichedPlayersCached;
         const allTeams: Team[] = JSON.parse(teamsCached);
         const allFixtures: Fixture[] = JSON.parse(fixturesCached);
 
@@ -208,6 +213,27 @@ export async function compareEntities(params: CompareEntitiesParams, _extra: any
             responseText += formatStat("ICT Index", p1.ict_index, p2.ict_index);
             responseText += formatStat("Minutes", p1.minutes, p2.minutes);
             responseText += formatStat("Bonus Points", p1.bonus, p2.bonus);
+            
+            // Add enriched data if available
+            if (isEnriched) {
+                // Recent form comparison
+                if (p1.current_season_performance && p2.current_season_performance) {
+                    const p1Recent = p1.current_season_performance.slice(-5);
+                    const p2Recent = p2.current_season_performance.slice(-5);
+                    const p1RecentAvg = p1Recent.length > 0 ? p1Recent.reduce((sum, gw) => sum + gw.points, 0) / p1Recent.length : 0;
+                    const p2RecentAvg = p2Recent.length > 0 ? p2Recent.reduce((sum, gw) => sum + gw.points, 0) / p2Recent.length : 0;
+                    
+                    responseText += formatStat("Recent Avg (5 GW)", p1RecentAvg.toFixed(1), p2RecentAvg.toFixed(1));
+                    responseText += formatStat("Recent Form", p1Recent.map(gw => gw.points).join(','), p2Recent.map(gw => gw.points).join(','));
+                }
+                
+                // Previous season comparison
+                if (p1.previous_season_summary || p2.previous_season_summary) {
+                    const p1LastSeason = p1.previous_season_summary;
+                    const p2LastSeason = p2.previous_season_summary;
+                    responseText += formatStat("Last Season Pts", p1LastSeason?.total_points || 'N/A', p2LastSeason?.total_points || 'N/A');
+                }
+            }
 
 
             // --- Upcoming Fixtures using PlayerDetailResponse ---

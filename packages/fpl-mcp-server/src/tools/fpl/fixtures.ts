@@ -25,7 +25,7 @@ export async function getGameweekFixtures(
         const { gameweekId } = gameweekFixturesSchema.parse(params);
         
         // Get fixtures data from cache
-        const cachedFixtures = await redis.get('fpl:fixtures');
+        const cachedFixtures = await redis.get('fpl:fixtures:all');
         const cachedTeams = await redis.get('fpl:teams');
         
         if (!cachedFixtures) {

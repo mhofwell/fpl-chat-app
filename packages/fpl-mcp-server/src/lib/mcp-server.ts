@@ -3,18 +3,22 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { randomUUID } from 'crypto';
 import redis from './redis/redis-client';
+import { registerTools } from '../tools';
 
 // In-memory session storage (with Redis backup)
 const sessions: Record<string, StreamableHTTPServerTransport> = {};
 const servers: Record<string, McpServer> = {};
 
-// Create MCP server
-export const createMcpServer = () => {
+// Create MCP server with tools registered
+export const createMcpServerWithTools = () => {
     const server = new McpServer({
         name: 'FPL-MCP-Server',
         version: '1.0.0',
     });
-
+    
+    // Register all tools
+    registerTools(server);
+    
     return server;
 };
 
@@ -74,9 +78,7 @@ export const getTransport = async (
         
         // Create and connect a new server if it doesn't exist
         if (!servers[sessionId]) {
-            // Import createMcpServer here to avoid circular dependency
-            const { createMcpServer } = await import('../server.js');
-            const server = createMcpServer();
+            const server = createMcpServerWithTools();
             await server.connect(transport);
             servers[sessionId] = server;
             console.log(`Recreated server for session ${sessionId}`);

@@ -59,7 +59,9 @@ export function registerTools(server: McpServer) {
             'form_desc', // Assumes 'form' is a comparable numeric string or we parse it
             'selected_by_percent_desc', // Assumes 'selected_by_percent' is comparable
             'price_rise_desc', // Added
-            'price_rise_asc'   // Added
+            'price_rise_asc',   // Added
+            'recent_form_desc', // Last 5 gameweeks average
+            'last_season_points_desc' // Previous season total points
         ]).optional().default('total_points_desc').describe("Stat to sort players by and direction."),
         limit: z.number().int().positive().optional().default(10).describe("Number of results to return."),
         includeRawData: z.boolean().optional().default(false).describe("Include raw JSON data alongside structured text.")

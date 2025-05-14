@@ -3,8 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config';
 import mcpRouter from './routes/mcp';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { registerTools } from './tools';
+import { createMcpServerWithTools } from './lib/mcp-server';
 import bodyParser from 'body-parser';
 
 const app = express();
@@ -55,15 +54,5 @@ process.on('SIGINT', () => {
     });
 });
 
-// Create MCP server
-export const createMcpServer = () => {
-    const server = new McpServer({
-        name: 'FPL-MCP-Server',
-        version: '1.0.0',
-    });
-
-    // Register all components
-    registerTools(server);
-
-    return server;
-};
+// Export the server creation function for backward compatibility
+export const createMcpServer = createMcpServerWithTools;

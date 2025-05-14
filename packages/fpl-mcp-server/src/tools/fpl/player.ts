@@ -76,12 +76,16 @@ export async function getPlayer(
             );
         }
 
-        const [playersCached, teamsCached] = await Promise.all([
-            redis.get('fpl:players'),
+        // Try to get enriched players first, fall back to basic
+        const [playersCached, teamsCached, enrichedPlayersCached] = await Promise.all([
+            redis.get('fpl:players:basic'),
             redis.get('fpl:teams'),
+            redis.get('fpl:players:enriched')
         ]);
 
-        if (!playersCached) {
+        const playersSource = enrichedPlayersCached || playersCached;
+        
+        if (!playersSource) {
             return createStructuredErrorResponse(
                 'Players data not found in cache. Please try again later.',
                 'CACHE_ERROR',
@@ -96,7 +100,8 @@ export async function getPlayer(
             );
         }
 
-        const allPlayers: Player[] = JSON.parse(playersCached);
+        const allPlayers: Player[] = JSON.parse(playersSource);
+        const isEnriched = !!enrichedPlayersCached;
         const allTeams: FplTeamType[] = JSON.parse(teamsCached);
 
         let potentialPlayers: Player[] = [...allPlayers];
@@ -206,6 +211,20 @@ export async function getPlayer(
         responseText += `- Form (Overall): ${foundPlayer!.form || 'N/A'}\n`;
         responseText += `- Total Points (This Season): ${foundPlayer!.total_points || 0}\n`;
         responseText += `- Points Per Game (This Season): ${foundPlayer!.points_per_game || 'N/A'}\n`;
+        
+        // Add enriched data if available
+        if (isEnriched && foundPlayer.current_season_performance && foundPlayer.current_season_performance.length > 0) {
+            const recent5 = foundPlayer.current_season_performance.slice(-5);
+            responseText += `- Recent Form (last ${recent5.length} GWs): ${recent5.map(gw => gw.points).join(', ')}\n`;
+            
+            // Calculate average points over recent games
+            const recentAvg = recent5.reduce((sum, gw) => sum + gw.points, 0) / recent5.length;
+            responseText += `- Avg Points (last ${recent5.length} GWs): ${recentAvg.toFixed(1)}\n`;
+        }
+        
+        if (isEnriched && foundPlayer.previous_season_summary) {
+            responseText += `- Last Season: ${foundPlayer.previous_season_summary.total_points} pts in ${foundPlayer.previous_season_summary.minutes} mins (${foundPlayer.previous_season_summary.season_name})\n`;
+        }
         
         if (playerDetails?.history && playerDetails.history.length > 0) {
             const currentSeasonHistory = playerDetails.history;

@@ -10,7 +10,7 @@ interface SearchPlayersParams {
     minPrice?: number;
     maxPrice?: number;
     minTotalPoints?: number;
-    sortBy?: 'total_points_desc' | 'now_cost_asc' | 'now_cost_desc' | 'form_desc' | 'selected_by_percent_desc' | 'price_rise_desc' | 'price_rise_asc';
+    sortBy?: 'total_points_desc' | 'now_cost_asc' | 'now_cost_desc' | 'form_desc' | 'selected_by_percent_desc' | 'price_rise_desc' | 'price_rise_asc' | 'recent_form_desc' | 'last_season_points_desc';
     limit?: number;
     includeRawData?: boolean;
 }
@@ -43,19 +43,46 @@ export async function searchPlayers(
     let userNotes: string[] = [];
 
     try {
-        const [playersCached, teamsCached] = await Promise.all([
-            redis.get('fpl:players'),
-            redis.get('fpl:teams')
+        // Try to get enriched players first, fall back to basic if not available
+        let enrichedCacheKey = 'fpl:players:enriched';
+        
+        // Get teams first if needed for filtering
+        const teamsCached = await redis.get('fpl:teams');
+        
+        // If we have filters, try to use optimized cache keys
+        if (teamName && position && teamsCached) {
+            const allTeams: Team[] = JSON.parse(teamsCached);
+            const teamSearchResult = findAndDisambiguateTeams(teamName, allTeams);
+            if (teamSearchResult.exactMatch) {
+                enrichedCacheKey = `fpl:players:enriched:team:${teamSearchResult.exactMatch.id}:pos:${position}`;
+            }
+        } else if (teamName && teamsCached) {
+            const allTeams: Team[] = JSON.parse(teamsCached);
+            const teamSearchResult = findAndDisambiguateTeams(teamName, allTeams);
+            if (teamSearchResult.exactMatch) {
+                enrichedCacheKey = `fpl:players:enriched:team:${teamSearchResult.exactMatch.id}`;
+            }
+        } else if (position) {
+            enrichedCacheKey = `fpl:players:enriched:pos:${position}`;
+        }
+        
+        const [playersCached, enrichedPlayersCached] = await Promise.all([
+            redis.get('fpl:players:basic'),
+            redis.get(enrichedCacheKey)
         ]);
 
-        if (!playersCached) {
+        // Use enriched data if available, otherwise fall back to basic
+        const playersSource = enrichedPlayersCached || playersCached;
+        
+        if (!playersSource) {
             return createStructuredErrorResponse('Players data not found in cache.', 'CACHE_ERROR', ['Ensure FPL data sync is active.']);
         }
         if (teamName && !teamsCached) {
             return createStructuredErrorResponse('Teams data not found in cache (required for teamName filter).', 'CACHE_ERROR', ['Ensure FPL data sync is active.']);
         }
 
-        let allPlayers: Player[] = JSON.parse(playersCached);
+        let allPlayers: Player[] = JSON.parse(playersSource);
+        const isEnriched = !!enrichedPlayersCached;
         const allTeams: Team[] = teamsCached ? JSON.parse(teamsCached) : [];
         
         let teamIdFilter: number | null = null;
@@ -128,6 +155,22 @@ export async function searchPlayers(
                     const aPriceRiseAsc = (a.now_cost !== undefined && a.cost_change_start !== undefined) ? a.now_cost - a.cost_change_start : Infinity;
                     const bPriceRiseAsc = (b.now_cost !== undefined && b.cost_change_start !== undefined) ? b.now_cost - b.cost_change_start : Infinity;
                     return aPriceRiseAsc - bPriceRiseAsc;
+                case 'recent_form_desc':
+                    if (isEnriched) {
+                        const aRecent = a.current_season_performance?.slice(-5) || [];
+                        const bRecent = b.current_season_performance?.slice(-5) || [];
+                        const aAvg = aRecent.length > 0 ? aRecent.reduce((sum, gw) => sum + gw.points, 0) / aRecent.length : -Infinity;
+                        const bAvg = bRecent.length > 0 ? bRecent.reduce((sum, gw) => sum + gw.points, 0) / bRecent.length : -Infinity;
+                        return bAvg - aAvg;
+                    }
+                    return parseFloatStat(b.form) - parseFloatStat(a.form); // Fallback to regular form
+                case 'last_season_points_desc':
+                    if (isEnriched) {
+                        const aLastSeason = a.previous_season_summary?.total_points ?? -Infinity;
+                        const bLastSeason = b.previous_season_summary?.total_points ?? -Infinity;
+                        return bLastSeason - aLastSeason;
+                    }
+                    return 0; // No enriched data, no sorting
                 case 'total_points_desc':
                 default:
                     return (bVal(b.total_points) - aVal(a.total_points));
@@ -164,6 +207,15 @@ export async function searchPlayers(
             responseText += `Selected By: ${player.selected_by_percent || 'N/A'}%\n`;
             const playerStatus = player.status || '';
             responseText += `Status: ${statusMap[playerStatus] || playerStatus || 'N/A'}\n`;
+            
+            // Add enriched data if available
+            if (isEnriched && player.current_season_performance) {
+                const recentGames = player.current_season_performance.slice(-5);
+                responseText += `Recent Form (last ${recentGames.length} GWs): ${recentGames.map(gw => gw.points).join(', ')}\n`;
+            }
+            if (isEnriched && player.previous_season_summary) {
+                responseText += `Last Season: ${player.previous_season_summary.total_points} pts in ${player.previous_season_summary.minutes} mins\n`;
+            }
             responseText += `---\n`;
         });
         

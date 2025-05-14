@@ -148,9 +148,9 @@ export async function searchFixtures(
     try {
         // Fetch players if includeDetails is true, as they are needed for parsing fixture.stats
         const [fixturesCached, teamsCached, playersCached] = await Promise.all([
-            redis.get('fpl:fixtures'),
+            redis.get('fpl:fixtures:all'),
             redis.get('fpl:teams'),
-            includeDetails ? redis.get('fpl:players') : Promise.resolve(null) // Fetch players only if needed
+            includeDetails ? redis.get('fpl:players:basic') : Promise.resolve(null) // Fetch players only if needed
         ]);
 
         if (!fixturesCached || !teamsCached) {

@@ -23,8 +23,8 @@ export async function getTeam(
     try {
         const [teamsCached, playersCached, fixturesCached] = await Promise.all([
             redis.get('fpl:teams'),
-            redis.get('fpl:players'), // Needed for includePlayers
-            redis.get('fpl:fixtures'), // Needed for includeFixtures
+            redis.get('fpl:players:basic'), // Needed for includePlayers
+            redis.get('fpl:fixtures:all'), // Needed for includeFixtures
         ]);
 
         if (!teamsCached) {

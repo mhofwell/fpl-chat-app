@@ -133,7 +133,7 @@ export async function getGameweek(
 
         if (includeFixtures) {
             responseText += "\nFIXTURES:\n";
-            const fixturesData = await redis.get('fpl:fixtures');
+            const fixturesData = await redis.get('fpl:fixtures:all');
             const teamsData = await redis.get('fpl:teams');
 
             if (fixturesData && teamsData) {
