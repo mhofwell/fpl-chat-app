@@ -119,7 +119,6 @@ async function updateTeams(supabase: SupabaseClient, teams: Team[]) {
                 id: team.id,
                 name: team.name,
                 short_name: team.short_name,
-                last_updated: new Date().toISOString(),
                 code: team.code,
                 form: team.form,
                 played: team.played,
@@ -171,8 +170,7 @@ async function updatePlayers(supabase: SupabaseClient, players: Player[]) {
                 full_name: player.full_name,
                 team_id: player.team_id,
                 position: player.position,
-                element_type: player.element_type,
-                last_updated: new Date().toISOString()
+                element_type: player.element_type
             }));
             
             const { error } = await supabase
@@ -221,8 +219,7 @@ async function updateGameweeks(supabase: SupabaseClient, gameweeks: Gameweek[]) 
                 is_previous: gameweek.is_previous || false,
                 average_entry_score: gameweek.average_entry_score || 0,
                 // Preserve is_player_stats_synced if it exists
-                is_player_stats_synced: gameweek.is_player_stats_synced,
-                last_updated: new Date().toISOString(),
+                is_player_stats_synced: gameweek.is_player_stats_synced
             }));
             
             const { error } = await supabase
@@ -271,8 +268,7 @@ async function updateFixtures(supabase: SupabaseClient, fixtures: Fixture[]) {
                 finished: fixture.finished,
                 started: fixture.started || false,
                 team_h_score: fixture.team_h_score,
-                team_a_score: fixture.team_a_score,
-                last_updated: new Date().toISOString(),
+                team_a_score: fixture.team_a_score
             }));
             
             const { error } = await supabase
