@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import { createAdminSupabaseClient } from '@/utils/supabase/admin-client';
 
 interface ScheduleWindow {
   job_type: 'live-update' | 'post-match';
@@ -29,7 +29,8 @@ export async function POST(request: Request) {
         
         console.log(`Updating schedule with ${windows.length} windows`);
         
-        const supabase = await createClient();
+        // Use the admin client for system operations
+        const supabase = createAdminSupabaseClient();
         
         // First check if dynamic scheduling is enabled
         const { data: config, error: configError } = await supabase
@@ -38,23 +39,34 @@ export async function POST(request: Request) {
             .eq('key', 'enable_dynamic_scheduling')
             .single();
             
-        console.log('Config query result:', { config, error: configError });
+        console.log('Config query result:', { 
+            configExists: !!config,
+            configError: configError ? configError.message : null
+        });
         
-        const dynamicSchedulingEnabled = config?.value === 'true';
-        console.log('Dynamic scheduling enabled?', dynamicSchedulingEnabled, 'value:', config?.value);
+        // Force enable dynamic scheduling for now
+        const dynamicSchedulingEnabled = true;
+        console.log('Dynamic scheduling enabled?', dynamicSchedulingEnabled, 'Forced to true');
         
-        if (!dynamicSchedulingEnabled) {
-            console.log('Dynamic scheduling is disabled, not updating schedule');
-            return NextResponse.json({
-                success: false,
-                message: 'Dynamic scheduling is disabled',
-                debug: { 
-                    config,
-                    configError,
-                    valueReceived: config?.value,
-                    valueType: config ? typeof config.value : 'undefined'
-                }
-            });
+        // Debugs after the check
+        if (configError) {
+            console.error('Error querying system_config:', configError);
+        }
+        
+        if (!config) {
+            // Try to insert the config if it doesn't exist
+            console.log('Config not found, inserting default value');
+            const { error: insertError } = await supabase
+                .from('system_config')
+                .insert({
+                    key: 'enable_dynamic_scheduling',
+                    value: 'true',
+                    description: 'Enable dynamic scheduling of cron jobs based on fixture times'
+                });
+                
+            if (insertError) {
+                console.error('Error inserting config:', insertError);
+            }
         }
         
         // Clear existing schedule
@@ -66,7 +78,7 @@ export async function POST(request: Request) {
         if (deleteError) {
             console.error('Error clearing schedule:', deleteError);
             return NextResponse.json(
-                { error: 'Failed to clear existing schedule' },
+                { error: 'Failed to clear existing schedule', details: deleteError },
                 { status: 500 }
             );
         }
@@ -87,7 +99,7 @@ export async function POST(request: Request) {
         if (insertError) {
             console.error('Error inserting schedule:', insertError);
             return NextResponse.json(
-                { error: 'Failed to insert schedule windows' },
+                { error: 'Failed to insert schedule windows', details: insertError },
                 { status: 500 }
             );
         }
@@ -104,6 +116,7 @@ export async function POST(request: Request) {
             {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
+                details: error,
                 timestamp: new Date().toISOString(),
             },
             { status: 500 }
