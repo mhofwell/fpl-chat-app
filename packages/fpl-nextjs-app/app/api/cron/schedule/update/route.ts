@@ -32,19 +32,28 @@ export async function POST(request: Request) {
         const supabase = await createClient();
         
         // First check if dynamic scheduling is enabled
-        const { data: config } = await supabase
+        const { data: config, error: configError } = await supabase
             .from('system_config')
             .select('value')
             .eq('key', 'enable_dynamic_scheduling')
             .single();
             
+        console.log('Config query result:', { config, error: configError });
+        
         const dynamicSchedulingEnabled = config?.value === 'true';
+        console.log('Dynamic scheduling enabled?', dynamicSchedulingEnabled, 'value:', config?.value);
         
         if (!dynamicSchedulingEnabled) {
             console.log('Dynamic scheduling is disabled, not updating schedule');
             return NextResponse.json({
                 success: false,
-                message: 'Dynamic scheduling is disabled'
+                message: 'Dynamic scheduling is disabled',
+                debug: { 
+                    config,
+                    configError,
+                    valueReceived: config?.value,
+                    valueType: config ? typeof config.value : 'undefined'
+                }
             });
         }
         
