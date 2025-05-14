@@ -16,9 +16,40 @@ export const CLAUDE_CONFIG = {
   MAX_REQUESTS_PER_MINUTE: 20, // Adjust as needed based on your API plan
 };
 
+// Helper function to ensure URL has protocol
+function ensureProtocol(url: string): string {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `http://${url}`;
+  }
+  return url;
+}
+
+// Helper function to ensure URL has port
+function ensurePort(url: string, defaultPort?: string): string {
+  // In Railway production, the MCP server typically runs on port 8080
+  const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
+  const fallbackPort = defaultPort || (isRailway ? '8080' : '3001');
+  const envPort = process.env.EXPRESS_MCP_SERVER_PORT || fallbackPort;
+  
+  // Parse the URL to check if it already has a port
+  try {
+    const urlObj = new URL(url);
+    if (!urlObj.port) {
+      urlObj.port = envPort;
+    }
+    return urlObj.toString();
+  } catch {
+    // If URL parsing fails, append port manually
+    if (!url.includes(':3001') && !url.includes(':8080') && !url.includes(`:${envPort}`)) {
+      return `${url}:${envPort}`;
+    }
+    return url;
+  }
+}
+
 // MCP server configuration
 export const MCP_CONFIG = {
-  SERVER_URL: process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001',
+  SERVER_URL: ensurePort(ensureProtocol(process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001')),
   SESSION_TOKEN_EXPIRATION_MS: 30 * 60 * 1000, // 30 minutes
   SESSION_RETRY_COUNT: 3,
   SESSION_RETRY_BACKOFF_MS: 500, // Base retry delay

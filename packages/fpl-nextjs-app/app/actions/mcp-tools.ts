@@ -22,7 +22,10 @@ type ToolResult = {
  */
 export async function initializeMcpSession(retryCount = 3): Promise<string | undefined> {
     let MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
-    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || '3001';
+    // In Railway production, the MCP server typically runs on port 8080
+    const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
+    const defaultPort = isRailway ? '8080' : '3001';
+    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || defaultPort;
     
     // Ensure URL has protocol
     if (!MCP_SERVER_URL.startsWith('http://') && !MCP_SERVER_URL.startsWith('https://')) {
@@ -144,7 +147,10 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
  */
 async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
     let MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
-    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || '3001';
+    // In Railway production, the MCP server typically runs on port 8080
+    const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
+    const defaultPort = isRailway ? '8080' : '3001';
+    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || defaultPort;
     
     // Ensure URL has protocol
     if (!MCP_SERVER_URL.startsWith('http://') && !MCP_SERVER_URL.startsWith('https://')) {
