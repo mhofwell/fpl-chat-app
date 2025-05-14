@@ -48,6 +48,14 @@ export async function getChatContext(chatId: string): Promise<ChatContext | null
   if (!CONTEXT_CONFIG.ENABLE_CONTEXT) {
     return null;
   }
+  
+  // Skip database lookup for anonymous chat IDs (they don't exist in the database)
+  if (chatId.startsWith('anon-')) {
+    return {
+      messages: [],
+      lastUpdated: new Date()
+    };
+  }
 
   try {
     const supabase = await createClient();

@@ -104,8 +104,8 @@ export async function createStreamingResponse(
  */
 export function adaptUIStreamHandler(uiHandler: UIStreamHandler): StreamMessageHandler {
   return (message: string, done: boolean, isToolCall?: boolean, toolName?: string) => {
-    const toolCall = isToolCall && toolName ? { name: toolName } : undefined;
-    uiHandler(message, done, toolCall);
+    const toolCall = isToolCall && toolName ? { name: String(toolName) } : undefined;
+    uiHandler(String(message), done, toolCall);
   };
 }
 
@@ -115,11 +115,17 @@ export async function streamWithTools(
   toolCallHandler: (name: string, input: Record<string, any>) => Promise<any>,
   onMessage: StreamMessageHandler | UIStreamHandler
 ): Promise<{ success: boolean; finalResponse?: string; error?: string }> {
-  // Determine if we need to adapt the handler
-  const messageHandler: StreamMessageHandler = 
-    typeof onMessage === 'function' && onMessage.length <= 3 
+  // Determine if we need to adapt the handler - safe check for function length
+  let messageHandler: StreamMessageHandler;
+  try {
+    const handlerLength = (onMessage as Function).length;
+    messageHandler = handlerLength <= 3 
       ? adaptUIStreamHandler(onMessage as UIStreamHandler) 
       : onMessage as StreamMessageHandler;
+  } catch (e) {
+    // If we can't access length, assume it's a UI handler
+    messageHandler = adaptUIStreamHandler(onMessage as UIStreamHandler);
+  }
   try {
     let finalText = '';
     let toolCalls: Array<{id: string; name: string; input: any}> = [];

@@ -374,7 +374,8 @@ export async function processUserMessage(
   try {
     // Apply rate limiting
     const userType = user ? 'default' : 'anonymous';
-    const rateLimitResult = applyRateLimit(user?.id, options.userIp, userType);
+    const userIp = options?.userIp;
+    const rateLimitResult = applyRateLimit(user?.id, userIp, userType);
     
     if (!rateLimitResult.allowed) {
       return {
@@ -453,7 +454,10 @@ export async function processUserMessage(
     let answer = '';
     
     // Handle streaming if enabled
-    if (options.enableStreaming && options.streamHandler) {
+    const streamingEnabled = options?.enableStreaming === true;
+    const streamHandler = options?.streamHandler;
+    
+    if (streamingEnabled && streamHandler) {
       console.log('Using streaming handler...');
       // For streaming responses with tool calls
       const streamResult = await streamWithTools(
@@ -477,7 +481,7 @@ export async function processUserMessage(
           }
         },
         // Stream handler
-        options.streamHandler
+        streamHandler
       );
       
       if (!streamResult.success) {
