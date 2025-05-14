@@ -60,7 +60,7 @@ export function testMcpUrls() {
             console.log(`    MCP: ${mcpUrl}`);
             console.log(`    Health: ${healthUrl}`);
         } catch (error) {
-            console.log(`  Input: ${testCase} - ERROR: ${error.message}`);
+            console.log(`  Input: ${testCase} - ERROR: ${error instanceof Error ? error.message : String(error)}`);
         }
     });
 }
