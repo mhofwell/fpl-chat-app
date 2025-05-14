@@ -284,6 +284,10 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('avatars', 'avatars', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- Note: Storage policies need to be set up manually in Supabase dashboard
+-- Or via Supabase SQL editor since they require ownership of storage.objects table
+-- Here are the policies to create:
+/*
 -- Set up storage policies for avatars
 DROP POLICY IF EXISTS "Users can view all avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can upload their own avatars" ON storage.objects;
@@ -300,3 +304,4 @@ WITH CHECK (bucket_id = 'avatars' AND (auth.uid())::text = SPLIT_PART(name, '-',
 CREATE POLICY "Users can update their own avatars"
 ON storage.objects FOR UPDATE
 USING (bucket_id = 'avatars' AND (auth.uid())::text = SPLIT_PART(name, '-', 1));
+*/

@@ -61,20 +61,71 @@ async function setupDatabase() {
             await clearDatabaseData();
         }
 
-        // Execute the exec_sql_function.sql first
-        console.log('Creating exec_sql function...');
-        const { error: funcError } = await executeSQL(
-            supabase,
-            fs.readFileSync(
+        // Check if exec_sql function exists or if it's in the schema cache
+        console.log('Checking for exec_sql function...');
+        let functionAvailable = false;
+        
+        try {
+            // First try to use the function
+            const { error: testError } = await supabase.rpc('exec_sql', { sql: 'SELECT 1' });
+            
+            if (!testError) {
+                functionAvailable = true;
+            } else if (testError.code === 'PGRST202') {
+                // Function might exist but not in schema cache
+                console.log('exec_sql function not found in schema cache.');
+                console.log('This usually happens after creating the function.');
+                console.log('The function exists but Supabase needs to refresh its schema cache.');
+                console.log('');
+                
+                // Provide manual alternative
+                console.log('ALTERNATIVE: You can run the migration directly:');
+                console.log('1. Go to your Supabase dashboard');
+                console.log('2. Navigate to the SQL Editor');
+                console.log('3. Copy the contents of scripts/migration.sql');
+                console.log('4. Paste and run it in the SQL Editor');
+                console.log('');
+                console.log('OR try running this command to refresh the schema:');
+                console.log('   npx supabase db reset --linked');
+                console.log('');
+                console.log('Then run npm run db:setup again.');
+                console.log('');
+                
+                // Show the exec_sql function creation for reference
+                console.log('Make sure the exec_sql function exists by running:');
+                const execSqlContent = fs.readFileSync(
+                    path.join(process.cwd(), 'scripts', 'exec_sql_function.sql'),
+                    'utf8'
+                );
+                console.log(execSqlContent);
+                process.exit(1);
+            }
+        } catch (error) {
+            functionAvailable = false;
+        }
+
+        if (!functionAvailable) {
+            console.log('\n================================================');
+            console.log('IMPORTANT: exec_sql function not accessible!');
+            console.log('================================================');
+            console.log('The exec_sql function needs to be created or made accessible.');
+            console.log('\nPlease follow these steps:');
+            console.log('1. Go to your Supabase dashboard');
+            console.log('2. Navigate to the SQL Editor');
+            console.log('3. Run this SQL:\n');
+            
+            const execSqlContent = fs.readFileSync(
                 path.join(process.cwd(), 'scripts', 'exec_sql_function.sql'),
                 'utf8'
-            )
-        );
-
-        if (funcError) {
-            console.error('Error creating exec_sql function:', funcError);
-            throw funcError;
+            );
+            console.log(execSqlContent);
+            console.log('\n================================================');
+            console.log('After creating the function, run this script again.');
+            console.log('================================================\n');
+            process.exit(1);
         }
+
+        console.log('exec_sql function is accessible, continuing with setup...');
 
         // Execute the migration SQL file without parsing
         console.log('Executing migration.sql...');
@@ -88,6 +139,20 @@ async function setupDatabase() {
 
         if (error) {
             console.error('Error executing migration SQL:', error);
+            
+            if (error.code === 'PGRST202') {
+                console.log('\n================================================');
+                console.log('Schema cache issue detected!');
+                console.log('================================================');
+                console.log('The exec_sql function exists but the schema cache is out of date.');
+                console.log('');
+                console.log('Please try one of these solutions:');
+                console.log('1. Wait a few minutes for the schema cache to refresh');
+                console.log('2. Run: npx supabase db reset --linked');
+                console.log('3. Manually run the migration.sql in Supabase SQL Editor');
+                console.log('================================================\n');
+            }
+            
             throw error;
         }
 

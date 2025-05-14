@@ -23,7 +23,25 @@ CLAUDE_API_KEY=your_claude_api_key
 
 ## Setup Workflow
 
-### 1. Drop All Tables (If Needed)
+### 1. Create exec_sql Function (First Time Setup)
+
+For a brand new Supabase instance, you need to create the exec_sql function first:
+
+1. Go to your Supabase dashboard
+2. Navigate to the SQL Editor
+3. Run the following SQL:
+
+```sql
+CREATE OR REPLACE FUNCTION exec_sql(sql text) RETURNS void AS $$
+BEGIN
+  EXECUTE sql;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+Alternatively, you can find this SQL in `scripts/exec_sql_function.sql`.
+
+### 2. Drop All Tables (If Needed)
 
 To reset the database completely:
 
@@ -31,7 +49,7 @@ To reset the database completely:
 npm run db:drop
 ```
 
-### 2. Setup the Database
+### 3. Setup the Database
 
 Run the database setup script to create all the necessary tables and policies:
 
@@ -40,7 +58,7 @@ npm run db:setup
 ```
 
 This will:
-- Create the exec_sql_function in Supabase (now integrated into the setup script)
+- Check if the exec_sql function exists (and provide instructions if it doesn't)
 - Create all required tables: teams, players, gameweeks, fixtures, profiles, user_preferences, chats, messages
 - Set up RLS policies to secure the data
 - Create triggers and functions for user management
