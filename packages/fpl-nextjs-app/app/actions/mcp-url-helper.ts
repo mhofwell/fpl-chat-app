@@ -19,6 +19,25 @@ export function buildMcpUrl(baseUrl: string | undefined, endpoint: string = ''):
     // Clean up URL - remove any leading/trailing whitespace
     url = url.trim();
     
+    // Check if URL is missing protocol (http/https)
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        // If it's a Railway internal URL without protocol, add protocol and port
+        if (url.includes('railway.internal')) {
+            url = `http://${url}`;
+            // Add port if missing
+            if (!url.includes(':8080')) {
+                url = url.replace('.railway.internal', '.railway.internal:8080');
+            }
+        } else {
+            // For other URLs, assume http and add default port
+            url = `http://${url}`;
+            if (!url.includes(':')) {
+                url = `${url}:${defaultPort}`;
+            }
+        }
+        console.log(`[buildMcpUrl] Added protocol/port to URL: "${url}"`);
+    }
+    
     // Simple URL building - just append endpoint with single slash
     let finalUrl = url;
     
@@ -51,7 +70,8 @@ export function testMcpUrls() {
         'fpl-mcp-server.railway.internal:8080',
         'fpl-mcp-server.railway.internal',
         'localhost:3001',
-        'http://localhost:3001'
+        'http://localhost:3001',
+        'fpl-mcp-server.railway.internal'
     ];
     
     console.log('Testing MCP URL construction:');
