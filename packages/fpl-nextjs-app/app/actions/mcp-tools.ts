@@ -159,7 +159,7 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
         // Construct a proper JSON-RPC 2.0 request
         const jsonRpcRequest = {
             jsonrpc: "2.0",
-            method: "invokeTool",
+            method: "tools/call",
             params: {
                 name: params.name,
                 arguments: params.arguments
@@ -208,11 +208,28 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
             let responseData;
 
             try {
-                responseData = JSON.parse(responseText);
-                console.log(`Parsed response: ${JSON.stringify(responseData)}`);
+                // Check if response is in SSE format
+                if (responseText.startsWith('event:') || responseText.includes('data:')) {
+                    // Parse SSE format
+                    const lines = responseText.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const dataContent = line.substring(5).trim();
+                            if (dataContent) {
+                                responseData = JSON.parse(dataContent);
+                                console.log(`Parsed SSE response: ${JSON.stringify(responseData)}`);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Regular JSON response
+                    responseData = JSON.parse(responseText);
+                    console.log(`Parsed response: ${JSON.stringify(responseData)}`);
+                }
             } catch (parseError) {
                 // If response is not valid JSON, use the raw text
-                console.error(`Failed to parse JSON response: ${parseError}`);
+                console.error(`Failed to parse response: ${parseError}`);
                 if (!response.ok) {
                     throw new Error(
                         `MCP server responded with status ${response.status}: ${responseText}`

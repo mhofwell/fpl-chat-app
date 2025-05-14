@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { processUserMessage, processUserMessageStreaming } from '@/app/actions/chat';
 import { initializeMcpSession } from '@/app/actions/mcp-tools';
 import { Loader2, Send, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +31,6 @@ export default function ChatUI() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [streamingMsgIndex, setStreamingMsgIndex] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [chatId, setChatId] = useState<string | null>(() =>
         typeof window !== 'undefined'
@@ -49,116 +47,54 @@ export default function ChatUI() {
     );
 
     useEffect(() => {
-        async function initSession() {
-            // First check localStorage
+        const initializeMcp = async () => {
+            // Check for existing session in localStorage
             const storedSessionId = localStorage.getItem('mcp-session-id');
-            
             if (storedSessionId) {
-                console.log('Found existing session ID:', storedSessionId);
                 setMcpSessionId(storedSessionId);
                 setIsInitializing(false);
-            } else {
-                setIsInitializing(true);
-                try {
-                    console.log('Initializing new MCP session...');
-                    const newSessionId = await initializeMcpSession();
-                    if (newSessionId) {
-                        setMcpSessionId(newSessionId);
-                        localStorage.setItem('mcp-session-id', newSessionId);
-                        console.log('MCP session initialized:', newSessionId);
-                    } else {
-                        console.error('Failed to initialize MCP session');
-                        setError('Failed to connect to FPL data service. Please try again later.');
-                    }
-                } catch (error) {
-                    console.error('Error initializing MCP session:', error);
-                    setError('Failed to initialize session. Please refresh the page to try again.');
-                } finally {
-                    setIsInitializing(false);
-                }
+                return;
             }
-        }
-        
-        initSession();
+
+            try {
+                const sessionId = await initializeMcpSession();
+                if (sessionId) {
+                    setMcpSessionId(sessionId);
+                    localStorage.setItem('mcp-session-id', sessionId);
+                } else {
+                    console.warn('Failed to establish MCP session');
+                }
+            } catch (error) {
+                console.error('Error initializing MCP session:', error);
+                setError('Failed to initialize FPL data connection. Some features may be limited.');
+            } finally {
+                setIsInitializing(false);
+            }
+        };
+
+        initializeMcp();
     }, []);
 
-    // Toggle streaming option
-    const toggleStreaming = () => {
-        const newValue = !enableStreaming;
-        setEnableStreaming(newValue);
-        localStorage.setItem('enable_streaming', newValue.toString());
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    // Scroll to bottom when messages change
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        scrollToBottom();
     }, [messages]);
 
-    // Format message content to highlight FPL data sections
-    const formatMessage = (content: string) => {
-        // Don't try to format empty content
-        if (!content) return content;
-        
-        // Check if we have section headers (like PLAYER_INFO:, KEY_STATS:, etc.)
-        const sections = content.split(/\n([\w_]+:)\n/g);
-        
-        if (sections.length > 1) {
-            return sections.map((section, i) => {
-                // Section headers
-                if (section.match(/^[\w_]+:$/)) {
-                    return <div key={i} className="font-bold mt-2 mb-1">{section}</div>;
-                }
-                
-                // Bullet points and lists
-                return <div key={i} className="whitespace-pre-wrap">{section}</div>;
-            });
-        }
-        
-        return <span className="whitespace-pre-wrap">{content}</span>;
+    const handleNewChat = () => {
+        // Clear the current chat
+        setMessages([]);
+        setChatId(null);
+        localStorage.removeItem('fpl_chat_id');
+        setError(null);
     };
 
-    // Handle streaming updates
-    const handleStreamUpdate = (chunk: string, done: boolean, toolCall?: {name: string}) => {
-        if (streamingMsgIndex === null) {
-            // First chunk, create the assistant message with streaming flag
-            const newIndex = messages.length;
-            setStreamingMsgIndex(newIndex);
-            
-            setMessages(prev => [
-                ...prev, 
-                { 
-                    role: 'assistant', 
-                    content: chunk,
-                    isStreaming: !done,
-                    usingTool: toolCall ? { name: toolCall.name, status: 'pending' } : undefined
-                }
-            ]);
-        } else {
-            // Update the existing streaming message
-            setMessages(prev => {
-                const newMessages = [...prev];
-                
-                if (newMessages[streamingMsgIndex]) {
-                    newMessages[streamingMsgIndex] = {
-                        ...newMessages[streamingMsgIndex],
-                        content: newMessages[streamingMsgIndex].content + chunk,
-                        isStreaming: !done,
-                        usingTool: toolCall 
-                            ? { 
-                                name: toolCall.name, 
-                                status: toolCall.name ? 'complete' : newMessages[streamingMsgIndex].usingTool?.status || 'pending'
-                              } 
-                            : newMessages[streamingMsgIndex].usingTool
-                    };
-                }
-                
-                return newMessages;
-            });
-        }
-        
-        if (done) {
-            setStreamingMsgIndex(null);
-        }
+    const handleToggleStreaming = () => {
+        const newValue = !enableStreaming;
+        setEnableStreaming(newValue);
+        localStorage.setItem('enable_streaming', String(newValue));
     };
 
     const handleSubmit = async (e: React.FormEvent, customMessage?: string) => {
@@ -176,73 +112,132 @@ export default function ChatUI() {
         setIsProcessing(true);
 
         try {
-            if (enableStreaming) {
-                // Process message with streaming (temporarily using non-streaming fallback)
-                const response = await processUserMessageStreaming(
+            // Send the message via POST request to start the SSE connection
+            const response = await fetch('/api/chat/sse', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: messageToSend,
                     chatId,
-                    messageToSend,
-                    handleStreamUpdate,
-                    mcpSessionId || undefined
-                );
+                    mcpSessionId,
+                }),
+            });
 
-                if (response.chatId && response.chatId !== chatId) {
-                    setChatId(response.chatId);
-                    localStorage.setItem('fpl_chat_id', response.chatId);
-                }
-                
-                if (response.mcpSessionId && response.mcpSessionId !== mcpSessionId) {
-                    setMcpSessionId(response.mcpSessionId);
-                    localStorage.setItem('mcp-session-id', response.mcpSessionId);
-                }
-
-                if (response.success && response.answer) {
-                    // Since streaming is disabled, add the complete response
-                    setMessages((prev) => [
-                        ...prev,
-                        {
-                            role: 'assistant',
-                            content: response.answer || '',
-                        },
-                    ]);
-                }
-
-                if (!response.success) {
-                    setError(response.error || 'An error occurred while processing your request.');
-                }
-            } else {
-                // Process message without streaming
-                const response = await processUserMessage(
-                    chatId,
-                    messageToSend,
-                    mcpSessionId || undefined
-                );
-
-                if (response.chatId && response.chatId !== chatId) {
-                    setChatId(response.chatId);
-                    localStorage.setItem('fpl_chat_id', response.chatId);
-                }
-                
-                if (response.mcpSessionId && response.mcpSessionId !== mcpSessionId) {
-                    setMcpSessionId(response.mcpSessionId);
-                    localStorage.setItem('mcp-session-id', response.mcpSessionId);
-                }
-
-                // Add assistant response
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        role: 'assistant',
-                        content: response.answer,
-                    },
-                ]);
-
-                if (!response.success) {
-                    setError(response.error || 'An error occurred while processing your request.');
-                }
+            if (!response.ok) {
+                throw new Error('Failed to connect to chat service');
             }
+
+            // Create EventSource with the same URL
+            const eventSource = new EventSource('/api/chat/sse');
+
+            // Add a new message for the assistant
+            const assistantMessageIndex = messages.length + 1;
+            setMessages((prev) => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: '',
+                    isStreaming: true,
+                },
+            ]);
+
+            let currentContent = '';
+
+            eventSource.addEventListener('chat-id', (e) => {
+                const data = JSON.parse(e.data);
+                if (data.chatId && data.chatId !== chatId) {
+                    setChatId(data.chatId);
+                    localStorage.setItem('fpl_chat_id', data.chatId);
+                }
+            });
+
+            eventSource.addEventListener('session-id', (e) => {
+                const data = JSON.parse(e.data);
+                if (data.mcpSessionId && data.mcpSessionId !== mcpSessionId) {
+                    setMcpSessionId(data.mcpSessionId);
+                    localStorage.setItem('mcp-session-id', data.mcpSessionId);
+                }
+            });
+
+            eventSource.addEventListener('text', (e) => {
+                const data = JSON.parse(e.data);
+                currentContent += data.content;
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    if (newMessages[assistantMessageIndex]) {
+                        newMessages[assistantMessageIndex] = {
+                            ...newMessages[assistantMessageIndex],
+                            content: currentContent,
+                            isStreaming: true,
+                        };
+                    }
+                    return newMessages;
+                });
+            });
+
+            eventSource.addEventListener('tool-start', (e) => {
+                const data = JSON.parse(e.data);
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    if (newMessages[assistantMessageIndex]) {
+                        newMessages[assistantMessageIndex] = {
+                            ...newMessages[assistantMessageIndex],
+                            usingTool: { name: data.name, status: 'pending' },
+                        };
+                    }
+                    return newMessages;
+                });
+            });
+
+            eventSource.addEventListener('tool-result', (e) => {
+                const data = JSON.parse(e.data);
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    if (newMessages[assistantMessageIndex]) {
+                        newMessages[assistantMessageIndex] = {
+                            ...newMessages[assistantMessageIndex],
+                            usingTool: { name: data.name, status: 'complete' },
+                        };
+                    }
+                    return newMessages;
+                });
+            });
+
+            eventSource.addEventListener('error', (e) => {
+                const data = JSON.parse(e.data);
+                setError(data.error || 'An error occurred');
+                eventSource.close();
+                setIsProcessing(false);
+            });
+
+            eventSource.addEventListener('done', (e) => {
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    if (newMessages[assistantMessageIndex]) {
+                        newMessages[assistantMessageIndex] = {
+                            ...newMessages[assistantMessageIndex],
+                            isStreaming: false,
+                        };
+                    }
+                    return newMessages;
+                });
+                eventSource.close();
+                setIsProcessing(false);
+            });
+
+            eventSource.onerror = (error) => {
+                console.error('EventSource error:', error);
+                setError('Connection lost. Please try again.');
+                eventSource.close();
+                setIsProcessing(false);
+            };
+
         } catch (error) {
-            console.error('Error processing message:', error);
-            setError('An unexpected error occurred. Please try again.');
+            console.error('Error handling message:', error);
+            setError('Failed to process your message. Please try again.');
+            setIsProcessing(false);
             
             setMessages((prev) => [
                 ...prev,
@@ -251,136 +246,181 @@ export default function ChatUI() {
                     content: 'Sorry, there was an error processing your request. Please try again.',
                 },
             ]);
-        } finally {
-            setIsProcessing(false);
         }
     };
 
     return (
         <div className="flex flex-col h-[600px] w-full max-w-3xl mx-auto rounded-lg border bg-background shadow-sm">
-            {/* Messages area */}
-            <div className="flex-1 p-4 overflow-y-auto">
-                {/* Welcome message when no messages */}
-                {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full space-y-4">
-                        <div className="text-center max-w-md">
-                            <h3 className="text-lg font-semibold mb-2">Welcome to FPL Chat Assistant</h3>
-                            <p className="text-muted-foreground mb-4">
-                                Get answers about players, teams, fixtures, gameweeks, and FPL strategy
+            {/* Header */}
+            <div className="p-4 border-b flex justify-between items-center">
+                <div>
+                    <h2 className="font-semibold text-lg">FPL Chat Assistant</h2>
+                    <p className="text-sm text-muted-foreground">
+                        Ask me anything about Fantasy Premier League!
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    {/* Streaming toggle */}
+                    <Button
+                        onClick={handleToggleStreaming}
+                        variant="outline"
+                        size="sm"
+                        disabled={isProcessing}
+                        className="text-xs"
+                    >
+                        {enableStreaming ? 'Streaming On' : 'Streaming Off'}
+                    </Button>
+                    {chatId && messages.length > 0 && (
+                        <Button
+                            onClick={handleNewChat}
+                            variant="outline"
+                            size="sm"
+                            disabled={isProcessing}
+                            className="text-xs"
+                        >
+                            <PlusCircle className="h-3 w-3 mr-1" />
+                            New Chat
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* Error Display */}
+            {error && (
+                <div className="mx-4 mt-4 p-3 bg-destructive/15 text-destructive text-sm rounded-md flex items-center justify-between">
+                    <span>{error}</span>
+                    <button
+                        onClick={() => setError(null)}
+                        className="text-destructive hover:text-destructive/80"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 && !isInitializing && (
+                    <div className="text-center space-y-6 mt-8">
+                        <p className="text-muted-foreground">
+                            Welcome! I can help you with Fantasy Premier League questions.
+                        </p>
+                        <div className="grid gap-2 max-w-md mx-auto">
+                            <p className="text-sm text-muted-foreground mb-2">
+                                Try asking something like:
                             </p>
-                            
-                            <div className="grid grid-cols-1 gap-2 text-left">
-                                {SAMPLE_QUESTIONS.map((question, idx) => (
-                                    <button
-                                        key={idx}
-                                        className="p-2 text-left border rounded-md hover:bg-muted/50 text-sm transition"
-                                        onClick={(e) => handleSubmit(e, question)}
-                                    >
-                                        {question}
-                                    </button>
-                                ))}
-                            </div>
+                            {SAMPLE_QUESTIONS.slice(0, 3).map((question, index) => (
+                                <Card
+                                    key={index}
+                                    className="p-3 cursor-pointer hover:bg-accent transition-colors"
+                                    onClick={() => handleSubmit(new Event('submit') as any, question)}
+                                >
+                                    <p className="text-sm">{question}</p>
+                                </Card>
+                            ))}
                         </div>
                     </div>
                 )}
-                
-                {/* Chat messages */}
-                {messages.map((msg, index) => (
+
+                {messages.map((message, index) => (
                     <div
                         key={index}
-                        className={`mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}
+                        className={`flex ${
+                            message.role === 'user' ? 'justify-end' : 'justify-start'
+                        }`}
                     >
                         <div
-                            className={`inline-block p-3 rounded-lg max-w-[85%] ${
-                                msg.role === 'user'
+                            className={`relative max-w-[85%] px-4 py-2 rounded-lg ${
+                                message.role === 'user'
                                     ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted text-foreground'
+                                    : 'bg-muted'
                             }`}
                         >
-                            {msg.role === 'assistant' && msg.usingTool && (
+                            {/* Tool usage indicator */}
+                            {message.usingTool && (
                                 <div className="mb-2">
-                                    <Badge variant="outline" className="flex items-center gap-1 mb-2">
-                                        {msg.usingTool.status === 'pending' ? (
-                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                        ) : (
-                                            <></>
+                                    <Badge
+                                        variant={
+                                            message.usingTool.status === 'complete'
+                                                ? 'default'
+                                                : message.usingTool.status === 'error'
+                                                ? 'destructive'
+                                                : 'secondary'
+                                        }
+                                        className="text-xs"
+                                    >
+                                        {message.usingTool.status === 'pending' && (
+                                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                                         )}
-                                        Using tool: {msg.usingTool.name}
+                                        Using: {message.usingTool.name}
                                     </Badge>
                                 </div>
                             )}
                             
-                            {/* Format the message content */}
-                            {formatMessage(msg.content)}
-                            
-                            {/* Show loading indicator for streaming */}
-                            {msg.isStreaming && (
-                                <div className="mt-2">
-                                    <Loader2 className="h-4 w-4 animate-spin inline ml-1" />
-                                </div>
-                            )}
+                            <div className="whitespace-pre-wrap break-words">
+                                {message.content}
+                                {message.isStreaming && (
+                                    <span className="inline-block w-1 h-4 ml-1 bg-current animate-pulse" />
+                                )}
+                            </div>
                         </div>
                     </div>
                 ))}
+
+                {isInitializing && (
+                    <div className="flex justify-center">
+                        <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Initializing FPL data connection...</span>
+                        </div>
+                    </div>
+                )}
+
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Error message display */}
-            {error && (
-                <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-800 text-sm">
-                    <strong>Error:</strong> {error}
-                </div>
-            )}
+            {/* Input */}
+            <form onSubmit={handleSubmit} className="p-4 border-t">
+                <div className="flex gap-2 relative">
+                    {/* Sample questions dropdown */}
+                    <select
+                        className="absolute -top-8 right-0 text-xs text-muted-foreground bg-background border rounded px-2 py-1"
+                        onChange={(e) => {
+                            if (e.target.value) {
+                                handleSubmit(new Event('submit') as any, e.target.value);
+                                e.target.value = '';
+                            }
+                        }}
+                        disabled={isProcessing || isInitializing}
+                    >
+                        <option value="">Quick questions...</option>
+                        {SAMPLE_QUESTIONS.map((q, i) => (
+                            <option key={i} value={q}>
+                                {q.length > 30 ? q.substring(0, 30) + '...' : q}
+                            </option>
+                        ))}
+                    </select>
 
-            {/* Input area */}
-            <div className="p-3 border-t">
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center text-xs">
-                        <label htmlFor="streaming-toggle" className="flex items-center cursor-pointer">
-                            <input
-                                id="streaming-toggle"
-                                type="checkbox"
-                                checked={enableStreaming}
-                                onChange={toggleStreaming}
-                                className="mr-1.5"
-                            />
-                            Streaming mode 
-                            <span className="ml-1 text-muted-foreground">(see responses in real-time)</span>
-                        </label>
-                    </div>
-                    
-                    {mcpSessionId && (
-                        <div className="text-xs text-muted-foreground">
-                            Session: {mcpSessionId.slice(0, 8)}...
-                        </div>
-                    )}
-                </div>
-                
-                <form className="flex gap-2" onSubmit={handleSubmit}>
                     <input
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={isInitializing ? "Initializing session..." : "Ask about FPL..."}
-                        className="flex-1 p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Ask about FPL players, teams, fixtures..."
+                        className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                         disabled={isProcessing || isInitializing}
                     />
                     <Button
                         type="submit"
-                        disabled={!input.trim() || isProcessing || isInitializing}
-                        size="icon"
-                        aria-label="Send message"
+                        disabled={isProcessing || !input.trim() || isInitializing}
                     >
-                        {isInitializing ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : isProcessing ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
+                        {isProcessing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                            <Send className="h-5 w-5" />
+                            <Send className="h-4 w-4" />
                         )}
                     </Button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     );
 }
