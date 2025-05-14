@@ -55,18 +55,21 @@ async function getCurrentGameweek() {
 async function getLastRefreshTime(jobType: string) {
   try {
     // Use .maybeSingle() instead of .single() to avoid error when no rows found
+    // Look for any successful state, not just 'completed'
+    const successStates = ['completed', 'regular', 'live-match', 'post-match', 'pre-deadline', 'full_success', 'manual_success'];
+    
     const { data, error } = await supabase
       .from('refresh_logs')
       .select('created_at')
       .eq('type', jobType)
-      .eq('state', 'completed')
+      .in('state', successStates)  // Look for any successful state
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     
     if (typeof error === 'object' && error && 'code' in error && error.code === 'PGRST116') {
-      console.info(`No previous refresh logs found for ${jobType}. This is expected for a fresh setup.`);
-    } else {
+      console.info(`No previous successful refresh logs found for ${jobType}. This is expected for a fresh setup.`);
+    } else if (error) {
       console.error(`Error fetching last refresh time for ${jobType}:`, error);
     }
     
@@ -74,8 +77,8 @@ async function getLastRefreshTime(jobType: string) {
   } catch (error) {
     // Only log as error if it's not the expected "no rows" error
     if (typeof error === 'object' && error && 'code' in error && error.code === 'PGRST116') {
-      console.info(`No previous refresh logs found for ${jobType}. This is expected for a fresh setup.`);
-    } else {
+      console.info(`No previous successful refresh logs found for ${jobType}. This is expected for a fresh setup.`);
+    } else if (error) {
       console.error(`Error fetching last refresh time for ${jobType}:`, error);
     }
     return null;
