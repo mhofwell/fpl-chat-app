@@ -27,119 +27,77 @@ export function calculateTtl(endpoint: string): number {
 
 
 
+// Standard headers for all API requests to avoid header value errors
+const standardHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache'
+};
+
+// Helper function for consistent fetch requests with error handling
+async function fetchWithStandardHeaders(url: string, requestDescription: string) {
+    const startTime = Date.now();
+    try {
+        if (isDevMode) console.log(`[DEV] Fetching ${requestDescription}`);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: standardHeaders,
+            credentials: 'omit',  // Don't send cookies
+            // Implements retry logic for 429 (too many requests) errors
+            retry: 3
+        });
+
+        if (!response.ok) {
+            if (response.status === 429) {
+                // Too many requests, implement exponential backoff
+                const retryAfter = response.headers.get('Retry-After') || '60';
+                const waitTime = parseInt(retryAfter, 10) * 1000;
+                console.warn(`Rate limited by FPL API. Retrying ${requestDescription} after ${waitTime}ms wait.`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                
+                // Retry the request
+                return fetchWithStandardHeaders(url, requestDescription);
+            }
+            
+            throw new Error(`Failed to fetch ${requestDescription}: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const endTime = Date.now();
+
+        if (isDevMode) {
+            console.log(`[DEV] ${requestDescription} fetched successfully in ${endTime - startTime}ms`);
+        }
+
+        return data;
+    } catch (error) {
+        const endTime = Date.now();
+        if (isDevMode) {
+            console.error(`[DEV] Error fetching ${requestDescription} after ${endTime - startTime}ms:`, error);
+        }
+        throw error;
+    }
+}
+
 // Basic FPL API client
 export const fplApi = {
     getBootstrapStatic: async () => {
-        try {
-            if (isDevMode) console.log('[DEV] Fetching bootstrap static data');
-
-            const response = await fetch(BOOTSTRAP_STATIC);
-            if (!response.ok)
-                throw new Error(
-                    `Failed to fetch bootstrap static: ${response.statusText}`
-                );
-
-            const data = await response.json();
-
-            if (isDevMode) {
-                console.log('[DEV] Bootstrap static data fetched successfully');
-            }
-
-            return data;
-        } catch (error) {
-            if (isDevMode) {
-                console.error('[DEV] Error fetching bootstrap static:', error);
-            }
-            throw error;
-        }
+        return fetchWithStandardHeaders(BOOTSTRAP_STATIC, 'bootstrap static data');
     },
 
     getFixtures: async () => {
-        try {
-            if (isDevMode) console.log('[DEV] Fetching fixtures data');
-
-            const response = await fetch(FIXTURES);
-            if (!response.ok)
-                throw new Error(
-                    `Failed to fetch fixtures: ${response.statusText}`
-                );
-
-            const data = await response.json();
-
-            if (isDevMode) {
-                console.log('[DEV] Fixtures data fetched successfully');
-            }
-
-            return data;
-        } catch (error) {
-            if (isDevMode) {
-                console.error('[DEV] Error fetching fixtures:', error);
-            }
-            throw error;
-        }
+        return fetchWithStandardHeaders(FIXTURES, 'fixtures data');
     },
 
     getPlayerDetail: async (playerId: number) => {
-        try {
-            if (isDevMode)
-                console.log(`[DEV] Fetching player detail for ID: ${playerId}`);
-
-            const response = await fetch(`${PLAYER_DETAIL}${playerId}/`);
-            if (!response.ok)
-                throw new Error(
-                    `Failed to fetch player detail: ${response.statusText}`
-                );
-
-            const data = await response.json();
-
-            if (isDevMode) {
-                console.log(
-                    `[DEV] Player detail fetched successfully for ID: ${playerId}`
-                );
-            }
-
-            return data;
-        } catch (error) {
-            if (isDevMode) {
-                console.error(
-                    `[DEV] Error fetching player detail for ID: ${playerId}:`,
-                    error
-                );
-            }
-            throw error;
-        }
+        return fetchWithStandardHeaders(`${PLAYER_DETAIL}${playerId}/`, `player detail for ID: ${playerId}`);
     },
 
     getGameweekLive: async (gameweekId: number) => {
-        try {
-            if (isDevMode)
-                console.log(
-                    `[DEV] Fetching gameweek live data for ID: ${gameweekId}`
-                );
-
-            const response = await fetch(`${GAMEWEEK_LIVE}${gameweekId}/live/`);
-            if (!response.ok)
-                throw new Error(
-                    `Failed to fetch gameweek live: ${response.statusText}`
-                );
-
-            const data = await response.json();
-
-            if (isDevMode) {
-                console.log(
-                    `[DEV] Gameweek live data fetched successfully for ID: ${gameweekId}`
-                );
-            }
-
-            return data;
-        } catch (error) {
-            if (isDevMode) {
-                console.error(
-                    `[DEV] Error fetching gameweek live for ID: ${gameweekId}:`,
-                    error
-                );
-            }
-            throw error;
-        }
+        return fetchWithStandardHeaders(`${GAMEWEEK_LIVE}${gameweekId}/live/`, `gameweek live data for ID: ${gameweekId}`);
     },
 };
