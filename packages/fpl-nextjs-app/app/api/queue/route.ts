@@ -3,28 +3,29 @@ import { Queue } from 'bullmq';
 import redis from '@/lib/redis/redis-client';
 import { checkCronSecret } from '@/lib/cron/cron-auth';
 
+// Define default queue options to prevent queue key accumulation
+const defaultQueueOptions = {
+    connection: redis,
+    prefix: 'fpl-queue',
+    defaultJobOptions: {
+        removeOnComplete: true,  // Remove jobs from Redis when they complete
+        removeOnFail: 100,       // Keep only the last 100 failed jobs
+        attempts: 3,             // Retry failed jobs up to 3 times
+        backoff: {
+            type: 'exponential',
+            delay: 5000
+        }
+    }
+};
+
 // Define the queues - one for each job type
 const queues = {
-    'daily-refresh': new Queue('daily-refresh', { 
-        connection: redis,
-        prefix: 'fpl-queue'
-    }),
-    'hourly-refresh': new Queue('hourly-refresh', { 
-        connection: redis,
-        prefix: 'fpl-queue'
-    }),
-    'live-refresh': new Queue('live-refresh', { 
-        connection: redis,
-        prefix: 'fpl-queue'
-    }),
-    'post-match-refresh': new Queue('post-match-refresh', {
-        connection: redis,
-        prefix: 'fpl-queue'
-    }),
-    'schedule-update': new Queue('schedule-update', { 
-        connection: redis,
-        prefix: 'fpl-queue'
-    }),
+    'daily-refresh': new Queue('daily-refresh', defaultQueueOptions),
+    'hourly-refresh': new Queue('hourly-refresh', defaultQueueOptions),
+    'live-refresh': new Queue('live-refresh', defaultQueueOptions),
+    'post-match-refresh': new Queue('post-match-refresh', defaultQueueOptions),
+    'pre-deadline-refresh': new Queue('pre-deadline-refresh', defaultQueueOptions),
+    'schedule-update': new Queue('schedule-update', defaultQueueOptions),
 };
 
 export async function POST(request: NextRequest) {
@@ -71,7 +72,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Check if this is a cleanup request
+    const { searchParams } = new URL(request.url);
+    const cleanup = searchParams.get('cleanup');
+
     try {
+        // If cleanup is requested, clean up old jobs
+        if (cleanup === 'true') {
+            await cleanupOldJobs();
+            return NextResponse.json({ status: 'cleanup-completed' });
+        }
+
         // Get queue stats
         const stats = await Promise.all(
             Object.entries(queues).map(async ([name, queue]) => {
@@ -96,5 +107,65 @@ export async function GET(request: NextRequest) {
             { error: 'Failed to get queue status' },
             { status: 500 }
         );
+    }
+}
+
+/**
+ * Cleans up old jobs from all queues to prevent Redis memory accumulation
+ */
+async function cleanupOldJobs() {
+    console.log('Starting queue cleanup process...');
+    
+    try {
+        const results = await Promise.all(
+            Object.entries(queues).map(async ([name, queue]) => {
+                // Get completed jobs older than 24 hours
+                const olderThan = Date.now() - 24 * 60 * 60 * 1000; // 24 hours ago
+                
+                // Clean up completed jobs
+                try {
+                    const completedCount = await queue.clean(olderThan, 'completed');
+                    console.log(`Cleaned ${completedCount} completed jobs from ${name} queue`);
+                } catch (err) {
+                    console.error(`Error cleaning completed jobs from ${name} queue:`, err);
+                }
+                
+                // Clean up failed jobs (keep more recent ones)
+                try {
+                    const failedCount = await queue.clean(olderThan, 'failed');
+                    console.log(`Cleaned ${failedCount} failed jobs from ${name} queue`);
+                } catch (err) {
+                    console.error(`Error cleaning failed jobs from ${name} queue:`, err);
+                }
+                
+                // Clean delayed jobs older than 48 hours (these are probably forgotten)
+                try {
+                    const delayedOlderThan = Date.now() - 48 * 60 * 60 * 1000; // 48 hours ago
+                    const delayedCount = await queue.clean(delayedOlderThan, 'delayed');
+                    console.log(`Cleaned ${delayedCount} delayed jobs from ${name} queue`);
+                } catch (err) {
+                    console.error(`Error cleaning delayed jobs from ${name} queue:`, err);
+                }
+                
+                // Get updated counts
+                const [waiting, active, completed, failed] = await Promise.all([
+                    queue.getWaitingCount(),
+                    queue.getActiveCount(),
+                    queue.getCompletedCount(),
+                    queue.getFailedCount(),
+                ]);
+                
+                return {
+                    name,
+                    stats: { waiting, active, completed, failed },
+                };
+            })
+        );
+        
+        console.log('Queue cleanup completed successfully');
+        return results;
+    } catch (error) {
+        console.error('Error during queue cleanup:', error);
+        throw error;
     }
 }

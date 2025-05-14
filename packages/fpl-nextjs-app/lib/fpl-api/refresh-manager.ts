@@ -676,27 +676,61 @@ export class RefreshManager {
         console.log('Performing incremental refresh...', { state: currentState.state });
 
         try {
+            // Fetch fresh bootstrap data from the FPL API
+            console.log('Fetching fresh bootstrap-static data from FPL API...');
             const freshBootstrapStaticData: BootstrapStaticResponse = await fplApi.getBootstrapStatic();
+            
+            if (!freshBootstrapStaticData || !freshBootstrapStaticData.teams || !freshBootstrapStaticData.elements || !freshBootstrapStaticData.events) {
+                console.error('Received invalid bootstrap data structure from FPL API');
+                return {
+                    refreshed: false,
+                    state: currentState.state,
+                    details: { dbSyncStatus: 'Received invalid bootstrap data structure from FPL API' },
+                };
+            }
+            
+            console.log(`Bootstrap data contains: ${freshBootstrapStaticData.teams.length} teams, ${freshBootstrapStaticData.elements.length} players, ${freshBootstrapStaticData.events.length} gameweeks`);
+            
+            // Compare with cached data
             const freshBootstrapStaticString = JSON.stringify(freshBootstrapStaticData);
             const cachedBootstrapStaticString = await redis.get('fpl:bootstrap-static');
             let areDataDifferent = !cachedBootstrapStaticString || freshBootstrapStaticString !== cachedBootstrapStaticString;
 
             if (areDataDifferent) {
                 console.log('Bootstrap-static data has changed. Updating Redis cache and syncing DB.');
-                const ttl = calculateTtl('bootstrap-static');
-                await redis.set('fpl:bootstrap-static', freshBootstrapStaticString, 'EX', ttl);
-                console.log(`Redis cache "fpl:bootstrap-static" updated with TTL: ${ttl}s.`);
+                
+                // Update Redis cache
+                try {
+                    const ttl = calculateTtl('bootstrap-static');
+                    await redis.set('fpl:bootstrap-static', freshBootstrapStaticString, 'EX', ttl);
+                    console.log(`Redis cache "fpl:bootstrap-static" updated with TTL: ${ttl}s.`);
+                } catch (redisError) {
+                    console.error('Error updating Redis cache:', redisError);
+                    // Continue with DB sync even if Redis update fails
+                }
 
                 try {
-                    const supabase = await createClient();
-                    await syncBootstrapDerivedTablesFromApiData(supabase, freshBootstrapStaticData);
-                    console.log('Bootstrap-derived DB tables synced successfully.');
+                    // Use admin client for better database permissions
+                    const supabase = createAdminSupabaseClient();
+                    console.log('Created admin Supabase client for database operations');
+                    
+                    // Sync database tables
+                    const syncResult = await syncBootstrapDerivedTablesFromApiData(supabase, freshBootstrapStaticData);
+                    console.log('Bootstrap-derived DB tables synced successfully:', syncResult);
 
+                    // Invalidate relevant caches
                     await cacheInvalidator.invalidatePattern('fpl:players:enriched*');
                     console.log('Enriched players cache pattern "fpl:players:enriched*" invalidated.');
 
-                    const logDetails = { dbSyncStatus: 'Bootstrap-derived tables synced' };
+                    // Log the successful refresh
+                    const logDetails = { 
+                        dbSyncStatus: 'Bootstrap-derived tables synced',
+                        teamsUpdated: syncResult.teamsUpdated,
+                        playersUpdated: syncResult.playersUpdated,
+                        gameweeksUpdated: syncResult.gameweeksUpdated
+                    };
                     await this.logRefresh('incremental', currentState.state, logDetails);
+                    
                     return {
                         refreshed: true,
                         state: currentState.state,
@@ -704,13 +738,25 @@ export class RefreshManager {
                     };
                 } catch (syncOrInvalidationError) {
                     console.error('Error during DB sync or enriched cache invalidation:', syncOrInvalidationError);
+                    
+                    // Create a detailed error report for troubleshooting
+                    const errorDetails = {
+                        dbSyncStatus: 'Bootstrap-derived tables sync failed',
+                        errorMessage: syncOrInvalidationError instanceof Error ? syncOrInvalidationError.message : 'Unknown error',
+                        errorStack: syncOrInvalidationError instanceof Error ? syncOrInvalidationError.stack : undefined,
+                        redisUpdateStatus: 'completed'
+                    };
+                    
+                    await this.logRefresh('incremental', 'error', errorDetails);
+                    
                     return {
                         refreshed: false,
-                        state: currentState.state,
-                        details: { dbSyncStatus: 'Bootstrap-derived tables sync failed' },
+                        state: 'error',
+                        details: errorDetails,
                     };
                 }
             } else {
+                console.log('Bootstrap-static data unchanged, no update needed.');
                 return {
                     refreshed: false,
                     state: currentState.state,
@@ -719,10 +765,21 @@ export class RefreshManager {
             }
         } catch (error) {
             console.error('Error in incremental refresh:', error);
+            
+            // Log the error with detailed information
+            const errorDetails = {
+                dbSyncStatus: 'Incremental refresh failed',
+                errorMessage: error instanceof Error ? error.message : 'Unknown error',
+                errorStack: error instanceof Error ? error.stack : undefined,
+                phase: 'bootstrap_data_fetch'
+            };
+            
+            await this.logRefresh('incremental', 'error', errorDetails);
+            
             return {
                 refreshed: false,
-                state: currentState.state,
-                details: { dbSyncStatus: 'Incremental refresh failed' },
+                state: 'error',
+                details: errorDetails,
             };
         }
     }

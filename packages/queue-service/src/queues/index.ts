@@ -22,7 +22,11 @@ export function initializeQueues() {
         // Create the queue
         queues[queueName] = new Queue(queueName, {
             connection: redis,
-            defaultJobOptions: JOB_OPTIONS.default,
+            defaultJobOptions: {
+                ...JOB_OPTIONS.default,
+                removeOnComplete: 100, // Keep only last 100 completed jobs
+                removeOnFail: 100, // Keep only last 100 failed jobs
+            },
             prefix: REDIS_CONFIG.prefix,
         });
 
@@ -36,8 +40,63 @@ export function initializeQueues() {
         });
     });
 
+    // Schedule a periodic cleanup function to run every 24 hours
+    scheduleQueueCleanup();
+    
     console.log('All queues initialized');
     return queues;
+}
+
+/**
+ * Schedule queue cleanup to run periodically to prevent Redis accumulation
+ */
+function scheduleQueueCleanup() {
+    console.log('Scheduling periodic queue cleanup task');
+    
+    // Run cleanup immediately on startup
+    setTimeout(() => cleanupQueues(), 120000); // 2 minutes after startup
+    
+    // Then schedule to run every 24 hours
+    setInterval(() => cleanupQueues(), 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Clean up old jobs from all queues
+ */
+async function cleanupQueues() {
+    console.log('Starting automatic queue cleanup...');
+    try {
+        for (const [queueName, queue] of Object.entries(queues)) {
+            console.log(`Cleaning up queue: ${queueName}`);
+            
+            try {
+                // Get timestamp for 24 hours ago
+                const olderThan = Date.now() - 24 * 60 * 60 * 1000;
+                
+                // Clean completed jobs
+                const completedCount = await queue.clean(olderThan, 'completed');
+                console.log(`- Removed ${completedCount} completed jobs from ${queueName}`);
+                
+                // Clean failed jobs
+                const failedCount = await queue.clean(olderThan, 'failed');
+                console.log(`- Removed ${failedCount} failed jobs from ${queueName}`);
+                
+                // Clean delayed jobs that are older than 48 hours (these might be stuck)
+                const olderThan48h = Date.now() - 48 * 60 * 60 * 1000;
+                const delayedCount = await queue.clean(olderThan48h, 'delayed');
+                console.log(`- Removed ${delayedCount} delayed jobs from ${queueName}`);
+                
+                // Get current job counts
+                const counts = await queue.getJobCounts();
+                console.log(`- Queue ${queueName} now has: ${JSON.stringify(counts)}`);
+            } catch (err) {
+                console.error(`Error cleaning queue ${queueName}:`, err);
+            }
+        }
+        console.log('Automatic queue cleanup completed');
+    } catch (error) {
+        console.error('Error in automatic queue cleanup:', error);
+    }
 }
 
 // Get a specific queue
