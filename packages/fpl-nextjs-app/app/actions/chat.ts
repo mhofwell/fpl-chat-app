@@ -446,12 +446,15 @@ export async function processUserMessage(
     const shouldUseToolsForQuery = shouldUseTool(message);
     
     // Format the context messages for Claude
+    console.log('Formatting context for Claude...');
     const contextMessages = context ? formatContextForClaude(context) : [];
+    console.log('Context messages formatted successfully');
     
     let answer = '';
     
     // Handle streaming if enabled
     if (options.enableStreaming && options.streamHandler) {
+      console.log('Using streaming handler...');
       // For streaming responses with tool calls
       const streamResult = await streamWithTools(
         anthropic,
@@ -610,9 +613,14 @@ export async function processUserMessage(
     };
   } catch (error) {
     console.error('Error processing message with Claude:', error);
+    console.error('Error type:', typeof error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
     
-    // Handle the error properly
-    const errorResult = await handleError(error, { context: 'processUserMessage', message });
+    // Handle the error properly - convert message to string to avoid server component issues
+    const errorResult = await handleError(error, { 
+      context: 'processUserMessage', 
+      message: String(message) 
+    });
     
     return {
       success: false,

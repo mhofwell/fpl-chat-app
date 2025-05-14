@@ -115,14 +115,15 @@ export async function handleError(
   const errorDetails = classifyError(error);
   errorDetails.context = context;
   
-  // Log the error with context
-  console.error('Error occurred:', {
-    type: errorDetails.type,
-    message: errorDetails.message,
-    context,
-    statusCode: errorDetails.statusCode,
-    originalError: errorDetails.originalError,
-  });
+  // Log the error with context - safe access to avoid server component issues
+  console.error('Error occurred:', errorDetails.type);
+  console.error('Error message:', errorDetails.message);
+  if (context) {
+    console.error('Error context keys:', Object.keys(context));
+  }
+  if (errorDetails.statusCode) {
+    console.error('Status code:', errorDetails.statusCode);
+  }
   
   // Default result with no recovery
   let result = {

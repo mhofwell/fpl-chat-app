@@ -141,7 +141,17 @@ export async function updateChatContext(
  * Formats the context messages for Claude API
  */
 export function formatContextForClaude(context: ChatContext): AnthropicMessageParam[] {
-  if (!context || !context.messages || context.messages.length === 0) {
+  if (!context || !context.messages) {
+    return [];
+  }
+  
+  // Safely check messages length
+  try {
+    if (Array.isArray(context.messages) && context.messages.length === 0) {
+      return [];
+    }
+  } catch (e) {
+    console.error('Error accessing messages length:', e);
     return [];
   }
   
@@ -153,7 +163,7 @@ export function formatContextForClaude(context: ChatContext): AnthropicMessagePa
     
     return {
       role,
-      content: msg.content
+      content: String(msg.content) // Convert to string to avoid proxy issues
       // Note: tool_calls and tool_results would need special handling
     };
   });
