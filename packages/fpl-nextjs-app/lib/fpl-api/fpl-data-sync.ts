@@ -592,7 +592,9 @@ export async function syncBootstrapDerivedTablesFromApiData(
             team_id: apiPlayer.team,
             element_type: apiPlayer.element_type,
             position: apiPlayer.element_type === 1 ? 'GKP' : apiPlayer.element_type === 2 ? 'DEF' : apiPlayer.element_type === 3 ? 'MID' : 'FWD',
-            last_updated: new Date().toISOString()
+            last_updated: new Date().toISOString(),
+            current_season_performance: [], // Default empty array for required property
+            previous_season_summary: null // Default null for required property
         }));
 
         // Map FPL API gameweek (event) data to our domain Gameweek type
