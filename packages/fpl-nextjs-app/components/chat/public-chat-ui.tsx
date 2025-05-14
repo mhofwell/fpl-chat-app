@@ -112,8 +112,8 @@ export default function ChatUI() {
         setIsProcessing(true);
 
         try {
-            // Send the message via POST request to start the SSE connection
-            const response = await fetch('/api/chat/sse', {
+            // Use EventSource with POST body for streaming
+            const response = await fetch('/api/chat/stream', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -128,9 +128,13 @@ export default function ChatUI() {
             if (!response.ok) {
                 throw new Error('Failed to connect to chat service');
             }
+            
+            if (!response.body) {
+                throw new Error('No response body');
+            }
 
-            // Create EventSource with the same URL
-            const eventSource = new EventSource('/api/chat/sse');
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
 
             // Add a new message for the assistant
             const assistantMessageIndex = messages.length + 1;
@@ -144,99 +148,125 @@ export default function ChatUI() {
             ]);
 
             let currentContent = '';
+            let buffer = '';
 
-            eventSource.addEventListener('chat-id', (e) => {
-                const data = JSON.parse(e.data);
-                if (data.chatId && data.chatId !== chatId) {
-                    setChatId(data.chatId);
-                    localStorage.setItem('fpl_chat_id', data.chatId);
-                }
-            });
-
-            eventSource.addEventListener('session-id', (e) => {
-                const data = JSON.parse(e.data);
-                if (data.mcpSessionId && data.mcpSessionId !== mcpSessionId) {
-                    setMcpSessionId(data.mcpSessionId);
-                    localStorage.setItem('mcp-session-id', data.mcpSessionId);
-                }
-            });
-
-            eventSource.addEventListener('text', (e) => {
-                const data = JSON.parse(e.data);
-                currentContent += data.content;
-                setMessages((prev) => {
-                    const newMessages = [...prev];
-                    if (newMessages[assistantMessageIndex]) {
-                        newMessages[assistantMessageIndex] = {
-                            ...newMessages[assistantMessageIndex],
-                            content: currentContent,
-                            isStreaming: true,
-                        };
-                    }
-                    return newMessages;
-                });
-            });
-
-            eventSource.addEventListener('tool-start', (e) => {
-                const data = JSON.parse(e.data);
-                setMessages((prev) => {
-                    const newMessages = [...prev];
-                    if (newMessages[assistantMessageIndex]) {
-                        newMessages[assistantMessageIndex] = {
-                            ...newMessages[assistantMessageIndex],
-                            usingTool: { name: data.name, status: 'pending' },
-                        };
-                    }
-                    return newMessages;
-                });
-            });
-
-            eventSource.addEventListener('tool-result', (e) => {
-                const data = JSON.parse(e.data);
-                setMessages((prev) => {
-                    const newMessages = [...prev];
-                    if (newMessages[assistantMessageIndex]) {
-                        newMessages[assistantMessageIndex] = {
-                            ...newMessages[assistantMessageIndex],
-                            usingTool: { name: data.name, status: 'complete' },
-                        };
-                    }
-                    return newMessages;
-                });
-            });
-
-            eventSource.addEventListener('error', (e: MessageEvent) => {
+            // Read the stream
+            const processStream = async () => {
                 try {
-                    const data = JSON.parse(e.data);
-                    setError(data.error || 'An error occurred');
-                } catch {
-                    setError('An error occurred');
-                }
-                eventSource.close();
-                setIsProcessing(false);
-            });
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
 
-            eventSource.addEventListener('done', (e) => {
-                setMessages((prev) => {
-                    const newMessages = [...prev];
-                    if (newMessages[assistantMessageIndex]) {
-                        newMessages[assistantMessageIndex] = {
-                            ...newMessages[assistantMessageIndex],
-                            isStreaming: false,
-                        };
+                        // Decode the chunk and add to buffer
+                        buffer += decoder.decode(value, { stream: true });
+                        
+                        // Process complete SSE messages
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) {
+                                const event = line.slice(6).trim();
+                                continue; // Event name
+                            }
+                            
+                            if (line.startsWith('data:')) {
+                                const data = line.slice(5).trim();
+                                if (!data) continue;
+
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    const eventType = lines[lines.indexOf(line) - 1]?.slice(6).trim();
+
+                                    switch (eventType) {
+                                        case 'chat-id':
+                                            if (parsed.chatId && parsed.chatId !== chatId) {
+                                                setChatId(parsed.chatId);
+                                                localStorage.setItem('fpl_chat_id', parsed.chatId);
+                                            }
+                                            break;
+
+                                        case 'session-id':
+                                            if (parsed.mcpSessionId && parsed.mcpSessionId !== mcpSessionId) {
+                                                setMcpSessionId(parsed.mcpSessionId);
+                                                localStorage.setItem('mcp-session-id', parsed.mcpSessionId);
+                                            }
+                                            break;
+
+                                        case 'text':
+                                            currentContent += parsed.content;
+                                            setMessages((prev) => {
+                                                const newMessages = [...prev];
+                                                if (newMessages[assistantMessageIndex]) {
+                                                    newMessages[assistantMessageIndex] = {
+                                                        ...newMessages[assistantMessageIndex],
+                                                        content: currentContent,
+                                                        isStreaming: true,
+                                                    };
+                                                }
+                                                return newMessages;
+                                            });
+                                            break;
+
+                                        case 'tool-start':
+                                            setMessages((prev) => {
+                                                const newMessages = [...prev];
+                                                if (newMessages[assistantMessageIndex]) {
+                                                    newMessages[assistantMessageIndex] = {
+                                                        ...newMessages[assistantMessageIndex],
+                                                        usingTool: { name: parsed.name, status: 'pending' },
+                                                    };
+                                                }
+                                                return newMessages;
+                                            });
+                                            break;
+
+                                        case 'tool-result':
+                                            setMessages((prev) => {
+                                                const newMessages = [...prev];
+                                                if (newMessages[assistantMessageIndex]) {
+                                                    newMessages[assistantMessageIndex] = {
+                                                        ...newMessages[assistantMessageIndex],
+                                                        usingTool: { name: parsed.name, status: 'complete' },
+                                                    };
+                                                }
+                                                return newMessages;
+                                            });
+                                            break;
+
+                                        case 'error':
+                                            setError(parsed.error || 'An error occurred');
+                                            setIsProcessing(false);
+                                            return;
+
+                                        case 'done':
+                                            setMessages((prev) => {
+                                                const newMessages = [...prev];
+                                                if (newMessages[assistantMessageIndex]) {
+                                                    newMessages[assistantMessageIndex] = {
+                                                        ...newMessages[assistantMessageIndex],
+                                                        isStreaming: false,
+                                                    };
+                                                }
+                                                return newMessages;
+                                            });
+                                            setIsProcessing(false);
+                                            return;
+                                    }
+                                } catch (error) {
+                                    console.error('Error parsing SSE data:', error);
+                                }
+                            }
+                        }
                     }
-                    return newMessages;
-                });
-                eventSource.close();
-                setIsProcessing(false);
-            });
-
-            eventSource.onerror = (error) => {
-                console.error('EventSource error:', error);
-                setError('Connection lost. Please try again.');
-                eventSource.close();
-                setIsProcessing(false);
+                } catch (error) {
+                    console.error('Stream reading error:', error);
+                    setError('Connection lost. Please try again.');
+                    setIsProcessing(false);
+                }
             };
+
+            await processStream();
 
         } catch (error) {
             console.error('Error handling message:', error);

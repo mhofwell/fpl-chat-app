@@ -17,7 +17,10 @@ const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
+export const runtime = 'nodejs';
+
 export async function POST(req: NextRequest) {
+  console.log('SSE route: Received POST request');
   // Create a TransformStream to handle SSE
   const encoder = new TextEncoder();
   const stream = new TransformStream();
