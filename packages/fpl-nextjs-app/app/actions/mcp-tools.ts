@@ -3,6 +3,7 @@
 
 import fetch from 'node-fetch';
 import { createClient } from '@/utils/supabase/server';
+import { buildMcpUrl } from './mcp-url-helper';
 
 // Define types for MCP communication
 type ToolCallParams = {
@@ -21,21 +22,7 @@ type ToolResult = {
  * Initialize a new MCP session
  */
 export async function initializeMcpSession(retryCount = 3): Promise<string | undefined> {
-    let MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
-    // In Railway production, the MCP server typically runs on port 8080
-    const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
-    const defaultPort = isRailway ? '8080' : '3001';
-    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || defaultPort;
-    
-    // Ensure URL has protocol
-    if (!MCP_SERVER_URL.startsWith('http://') && !MCP_SERVER_URL.startsWith('https://')) {
-        MCP_SERVER_URL = `http://${MCP_SERVER_URL}`;
-    }
-    
-    // Append port if not already included in URL
-    if (!MCP_SERVER_URL.includes(':3001') && !MCP_SERVER_URL.includes(':8080') && !MCP_SERVER_URL.includes(`:${MCP_SERVER_PORT}`)) {
-        MCP_SERVER_URL = `${MCP_SERVER_URL}:${MCP_SERVER_PORT}`;
-    }
+    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE;
 
     console.log(`MCP Server URL: ${MCP_SERVER_URL}`);
     console.log(`Environment: ${process.env.NODE_ENV}`);
@@ -47,7 +34,10 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
             
             // Test if we can reach the MCP server
             try {
-                const healthCheck = await fetch(`${MCP_SERVER_URL}/health`, {
+                const healthUrl = buildMcpUrl(MCP_SERVER_URL, 'health');
+                console.log(`Health check URL: ${healthUrl}`);
+                
+                const healthCheck = await fetch(healthUrl, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json'
@@ -66,7 +56,9 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
             }
             
             // Send a compliant MCP initialize request
-            const response = await fetch(`${MCP_SERVER_URL}/mcp`, {
+            const mcpEndpoint = buildMcpUrl(MCP_SERVER_URL, 'mcp');
+            console.log(`Attempting to connect to MCP endpoint: ${mcpEndpoint}`);
+            const response = await fetch(mcpEndpoint, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -146,21 +138,7 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
  * Server-side MCP client that communicates with the MCP Express server
  */
 async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
-    let MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
-    // In Railway production, the MCP server typically runs on port 8080
-    const isRailway = process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
-    const defaultPort = isRailway ? '8080' : '3001';
-    const MCP_SERVER_PORT = process.env.EXPRESS_MCP_SERVER_PORT || defaultPort;
-    
-    // Ensure URL has protocol
-    if (!MCP_SERVER_URL.startsWith('http://') && !MCP_SERVER_URL.startsWith('https://')) {
-        MCP_SERVER_URL = `http://${MCP_SERVER_URL}`;
-    }
-    
-    // Append port if not already included in URL
-    if (!MCP_SERVER_URL.includes(':3001') && !MCP_SERVER_URL.includes(':8080') && !MCP_SERVER_URL.includes(`:${MCP_SERVER_PORT}`)) {
-        MCP_SERVER_URL = `${MCP_SERVER_URL}:${MCP_SERVER_PORT}`;
-    }
+    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE;
     
     const TIMEOUT_MS = 10000; // 10 second timeout
 
@@ -192,7 +170,9 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
 
         try {
             // Call the MCP server endpoint with timeout
-            const fetchPromise = fetch(`${MCP_SERVER_URL}/mcp`, {
+            const mcpEndpoint = buildMcpUrl(MCP_SERVER_URL, 'mcp');
+            console.log(`Calling MCP server at: ${mcpEndpoint}`);
+            const fetchPromise = fetch(mcpEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
