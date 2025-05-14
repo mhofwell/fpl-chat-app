@@ -203,12 +203,16 @@ AVAILABLE TOOLS:
 
         let completeResponse = '';
         let toolCalls: any[] = [];
+        let currentBlockIndex = 0;
+        let currentBlockId: string | null = null;
 
         for await (const chunk of stream) {
           if (chunk.type === 'content_block_start') {
+            currentBlockIndex = chunk.index;
             if (chunk.content_block.type === 'text') {
               sendEvent('start', { type: 'text' });
             } else if (chunk.content_block.type === 'tool_use') {
+              currentBlockId = chunk.content_block.id;
               sendEvent('tool-start', { 
                 name: chunk.content_block.name,
                 id: chunk.content_block.id
@@ -216,6 +220,7 @@ AVAILABLE TOOLS:
               toolCalls.push({
                 id: chunk.content_block.id,
                 name: chunk.content_block.name,
+                index: currentBlockIndex,
                 input: {} // Will be filled by deltas
               });
             }
@@ -224,24 +229,29 @@ AVAILABLE TOOLS:
               completeResponse += chunk.delta.text;
               sendEvent('text', { content: chunk.delta.text });
             } else if (chunk.delta.type === 'input_json_delta') {
-              // Find the tool call being updated
-              const toolCall = toolCalls.find(tc => tc.id === chunk.index);
+              // Find the tool call being updated by the current block id
+              const toolCall = toolCalls.find(tc => tc.id === currentBlockId);
               if (toolCall) {
                 // Accumulate the JSON delta
                 toolCall.inputJson = (toolCall.inputJson || '') + chunk.delta.partial_json;
               }
             }
           } else if (chunk.type === 'content_block_stop') {
-            // Handle tool use completion
-            const toolCall = toolCalls.find(tc => tc.id === chunk.index);
+            // Handle tool use completion - use currentBlockId to find the right tool call
+            const toolCall = toolCalls.find(tc => tc.id === currentBlockId);
+            console.log('content_block_stop - Looking for tool call with id:', currentBlockId);
+            console.log('Found tool call:', toolCall ? 'yes' : 'no');
+            
             if (toolCall && toolCall.inputJson) {
               try {
                 toolCall.input = JSON.parse(toolCall.inputJson);
+                console.log('Parsed tool input:', toolCall.input);
                 sendEvent('tool-processing', { name: toolCall.name });
                 
                 // Execute the tool and store result
                 const result = await callMcpTool(toolCall.name, toolCall.input, validSessionId);
                 toolCall.result = result; // Store for later use
+                console.log('Tool execution result:', result.success ? 'success' : 'error');
                 
                 if (result.success) {
                   sendEvent('tool-result', { 
@@ -261,13 +271,22 @@ AVAILABLE TOOLS:
                   error: 'Failed to parse tool input' 
                 });
               }
+            } else {
+              console.log('No tool call found or no inputJson for block id:', currentBlockId);
             }
+            // Reset current block tracking
+            currentBlockId = null;
           }
         }
 
         // If there were tool calls, send a follow-up message
         if (toolCalls.length > 0) {
           console.log('Processing tool calls for follow-up:', toolCalls.length);
+          console.log('Tool calls array:', toolCalls.map(tc => ({ 
+            id: tc.id, 
+            name: tc.name, 
+            hasResult: !!tc.result 
+          })));
           
           const toolResults = toolCalls
             .filter(toolCall => toolCall.result) // Only include tool calls with results
