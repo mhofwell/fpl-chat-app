@@ -70,20 +70,20 @@ async function cleanupQueues() {
             console.log(`Cleaning up queue: ${queueName}`);
             
             try {
-                // Get timestamp for 24 hours ago
-                const olderThan = Date.now() - 24 * 60 * 60 * 1000;
+                // Clean jobs older than 24 hours (grace period is in milliseconds)
+                const gracePeriod24h = 24 * 60 * 60 * 1000;
                 
                 // Clean completed jobs
-                const completedCount = await queue.clean(olderThan, 'completed');
+                const completedCount = await queue.clean(gracePeriod24h, 100, 'completed');
                 console.log(`- Removed ${completedCount} completed jobs from ${queueName}`);
                 
                 // Clean failed jobs
-                const failedCount = await queue.clean(olderThan, 'failed');
+                const failedCount = await queue.clean(gracePeriod24h, 100, 'failed');
                 console.log(`- Removed ${failedCount} failed jobs from ${queueName}`);
                 
                 // Clean delayed jobs that are older than 48 hours (these might be stuck)
-                const olderThan48h = Date.now() - 48 * 60 * 60 * 1000;
-                const delayedCount = await queue.clean(olderThan48h, 'delayed');
+                const gracePeriod48h = 48 * 60 * 60 * 1000;
+                const delayedCount = await queue.clean(gracePeriod48h, 100, 'delayed');
                 console.log(`- Removed ${delayedCount} delayed jobs from ${queueName}`);
                 
                 // Get current job counts
