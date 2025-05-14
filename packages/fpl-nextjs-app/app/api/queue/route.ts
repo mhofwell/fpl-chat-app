@@ -119,12 +119,12 @@ async function cleanupOldJobs() {
     try {
         const results = await Promise.all(
             Object.entries(queues).map(async ([name, queue]) => {
-                // Get completed jobs older than 24 hours
-                const olderThan = Date.now() - 24 * 60 * 60 * 1000; // 24 hours ago
+                // Clean jobs older than 24 hours (grace period is in milliseconds)
+                const gracePeriod24h = 24 * 60 * 60 * 1000;
                 
                 // Clean up completed jobs
                 try {
-                    const completedCount = await queue.clean(olderThan, 'completed');
+                    const completedCount = await queue.clean(gracePeriod24h, 100, 'completed');
                     console.log(`Cleaned ${completedCount} completed jobs from ${name} queue`);
                 } catch (err) {
                     console.error(`Error cleaning completed jobs from ${name} queue:`, err);
@@ -132,7 +132,7 @@ async function cleanupOldJobs() {
                 
                 // Clean up failed jobs (keep more recent ones)
                 try {
-                    const failedCount = await queue.clean(olderThan, 'failed');
+                    const failedCount = await queue.clean(gracePeriod24h, 100, 'failed');
                     console.log(`Cleaned ${failedCount} failed jobs from ${name} queue`);
                 } catch (err) {
                     console.error(`Error cleaning failed jobs from ${name} queue:`, err);
@@ -140,8 +140,8 @@ async function cleanupOldJobs() {
                 
                 // Clean delayed jobs older than 48 hours (these are probably forgotten)
                 try {
-                    const delayedOlderThan = Date.now() - 48 * 60 * 60 * 1000; // 48 hours ago
-                    const delayedCount = await queue.clean(delayedOlderThan, 'delayed');
+                    const gracePeriod48h = 48 * 60 * 60 * 1000;
+                    const delayedCount = await queue.clean(gracePeriod48h, 100, 'delayed');
                     console.log(`Cleaned ${delayedCount} delayed jobs from ${name} queue`);
                 } catch (err) {
                     console.error(`Error cleaning delayed jobs from ${name} queue:`, err);
