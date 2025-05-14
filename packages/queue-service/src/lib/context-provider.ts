@@ -54,6 +54,9 @@ async function getCurrentGameweek() {
 // Get last refresh time for a specific job type
 async function getLastRefreshTime(jobType: string) {
   try {
+    // Map queue name to refresh type for log lookup
+    const refreshType = REFRESH_TYPES[jobType] || jobType;
+    
     // Use .maybeSingle() instead of .single() to avoid error when no rows found
     // Look for any successful state, not just 'completed'
     const successStates = ['completed', 'regular', 'live-match', 'post-match', 'pre-deadline', 'full_success', 'manual_success'];
@@ -61,25 +64,25 @@ async function getLastRefreshTime(jobType: string) {
     const { data, error } = await supabase
       .from('refresh_logs')
       .select('created_at')
-      .eq('type', jobType)
+      .eq('type', refreshType)  // Use mapped refresh type
       .in('state', successStates)  // Look for any successful state
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     
     if (typeof error === 'object' && error && 'code' in error && error.code === 'PGRST116') {
-      console.info(`No previous successful refresh logs found for ${jobType}. This is expected for a fresh setup.`);
+      console.info(`No previous successful refresh logs found for ${jobType} (type: ${refreshType}). This is expected for a fresh setup.`);
     } else if (error) {
-      console.error(`Error fetching last refresh time for ${jobType}:`, error);
+      console.error(`Error fetching last refresh time for ${jobType} (type: ${refreshType}):`, error);
     }
     
     return data ? data.created_at : null;
   } catch (error) {
     // Only log as error if it's not the expected "no rows" error
     if (typeof error === 'object' && error && 'code' in error && error.code === 'PGRST116') {
-      console.info(`No previous successful refresh logs found for ${jobType}. This is expected for a fresh setup.`);
+      console.info(`No previous successful refresh logs found for ${jobType} (type: ${refreshType}). This is expected for a fresh setup.`);
     } else if (error) {
-      console.error(`Error fetching last refresh time for ${jobType}:`, error);
+      console.error(`Error fetching last refresh time for ${jobType} (type: ${refreshType}):`, error);
     }
     return null;
   }
