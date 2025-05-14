@@ -59,7 +59,7 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
                 }
             } catch (healthError) {
                 console.error('Failed to reach MCP server health check:', healthError);
-                throw new Error(`MCP server unreachable at ${MCP_SERVER_URL}: ${healthError.message}`);
+                throw new Error(`MCP server unreachable at ${MCP_SERVER_URL}: ${healthError instanceof Error ? healthError.message : String(healthError)}`);
             }
             
             // Send a compliant MCP initialize request
@@ -121,9 +121,9 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
         } catch (error) {
             console.error(`Error initializing MCP session (attempt ${attempt}/${retryCount}):`, error);
             console.error(`Error details:`, {
-                message: error.message,
-                stack: error.stack,
-                cause: error.cause
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                cause: error instanceof Error ? error.cause : undefined
             });
             
             // Only retry if we haven't reached max attempts
