@@ -220,17 +220,24 @@ export class RefreshManager {
         details?: any
     ): Promise<void> {
         try {
-            const supabase = await createClient();
+            // Use admin client for better permissions
+            const supabase = createAdminSupabaseClient();
 
-            await supabase.from('refresh_logs').insert({
+            const { error: insertError } = await supabase.from('refresh_logs').insert({
                 type,
                 state,
                 details,
                 created_at: new Date().toISOString(),
             });
 
+            if (insertError) {
+                console.error('Error inserting refresh log:', insertError);
+                console.error('Log details:', { type, state, details });
+                throw insertError;
+            }
+
             // Also update the last refresh timestamp
-            await supabase.from('system_meta').upsert(
+            const { error: upsertError } = await supabase.from('system_meta').upsert(
                 {
                     key: 'last_refresh',
                     value: JSON.stringify({
@@ -241,8 +248,13 @@ export class RefreshManager {
                 },
                 { onConflict: 'key' }
             );
+
+            if (upsertError) {
+                console.error('Error updating system_meta:', upsertError);
+            }
         } catch (error) {
-            console.error('Error logging refresh:', error);
+            console.error('Error in logRefresh:', error);
+            console.error('Failed to log refresh:', { type, state, details });
         }
     }
 
