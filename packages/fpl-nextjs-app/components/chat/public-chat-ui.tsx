@@ -205,9 +205,13 @@ export default function ChatUI() {
                 });
             });
 
-            eventSource.addEventListener('error', (e) => {
-                const data = JSON.parse(e.data);
-                setError(data.error || 'An error occurred');
+            eventSource.addEventListener('error', (e: MessageEvent) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    setError(data.error || 'An error occurred');
+                } catch {
+                    setError('An error occurred');
+                }
                 eventSource.close();
                 setIsProcessing(false);
             });
