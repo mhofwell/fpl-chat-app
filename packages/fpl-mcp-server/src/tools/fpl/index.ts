@@ -51,10 +51,8 @@ export const fplMVPTools = {
           description: 'Include last 5 games data (default: true)'
         }
       },
-      oneOf: [
-        { required: ['playerName'] },
-        { required: ['playerId'] }
-      ]
+      // Note: Either playerName or playerId is required
+      required: []
     },
     handler: mvpHandlers.getPlayerStats
   },

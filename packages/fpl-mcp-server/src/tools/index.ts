@@ -19,7 +19,7 @@ export function registerTools(server: McpServer) {
         // Convert each property to Zod schema
         Object.entries(properties).forEach(([key, prop]: [string, any]) => {
             if (prop.type === 'string') {
-                schema[key] = prop.enum ? z.enum(prop.enum) : z.string();
+                schema[key] = prop.enum ? z.enum(prop.enum as [string, ...string[]]) : z.string();
             } else if (prop.type === 'number') {
                 schema[key] = z.number();
             } else if (prop.type === 'boolean') {
@@ -32,14 +32,44 @@ export function registerTools(server: McpServer) {
             }
             
             // Make optional if not required
-            if (!tool.inputSchema.required?.includes(key)) {
+            const required = tool.inputSchema.required as string[] | undefined;
+            if (!required?.includes(key)) {
                 schema[key] = schema[key].optional();
             }
         });
         
         // Register the tool with MCP server
-        server.tool(name, schema, async (input: any) => {
-            return await tool.handler(input);
+        server.tool(name, schema, async (input: any, extra: any) => {
+            const result = await tool.handler(input);
+            
+            // Convert handler result to MCP format
+            if (result.error) {
+                return {
+                    content: [{ 
+                        type: 'text' as const, 
+                        text: result.message 
+                    }],
+                    isError: true
+                };
+            }
+            
+            // Check if content is already in the right format
+            if (result.content) {
+                return {
+                    content: result.content.map((item: any) => ({
+                        ...item,
+                        type: item.type as 'text'
+                    }))
+                };
+            }
+            
+            // Fallback
+            return {
+                content: [{ 
+                    type: 'text' as const, 
+                    text: JSON.stringify(result) 
+                }]
+            };
         });
     });
     
