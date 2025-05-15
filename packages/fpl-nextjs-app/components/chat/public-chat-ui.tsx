@@ -6,6 +6,7 @@ import { initializeMcpSession } from '@/app/actions/mcp-tools';
 import { Loader2, Send, PlusCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { SSEParser } from '@/utils/sse-parser';
 
 interface ToolExecution {
     name: string;
@@ -196,7 +197,7 @@ export default function ChatUI() {
             ]);
 
             let currentContent = '';
-            let buffer = '';
+            const sseParser = new SSEParser();
 
             // Read the stream
             const processStream = async () => {
@@ -205,26 +206,16 @@ export default function ChatUI() {
                         const { done, value } = await reader.read();
                         if (done) break;
 
-                        // Decode the chunk and add to buffer
-                        buffer += decoder.decode(value, { stream: true });
+                        // Decode the chunk and parse SSE events
+                        const chunk = decoder.decode(value, { stream: true });
+                        const events = sseParser.parseChunk(chunk);
                         
-                        // Process complete SSE messages
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                        for (const sseEvent of events) {
+                            if (!sseEvent.data) continue;
 
-                        for (const line of lines) {
-                            if (line.startsWith('event:')) {
-                                const event = line.slice(6).trim();
-                                continue; // Event name
-                            }
-                            
-                            if (line.startsWith('data:')) {
-                                const data = line.slice(5).trim();
-                                if (!data) continue;
-
-                                try {
-                                    const parsed = JSON.parse(data);
-                                    const eventType = lines[lines.indexOf(line) - 1]?.slice(6).trim();
+                            try {
+                                const parsed = JSON.parse(sseEvent.data);
+                                const eventType = sseEvent.event === 'message' ? parsed.type || 'message' : sseEvent.event;
 
                                     switch (eventType) {
                                         case 'chat-id':
@@ -346,7 +337,23 @@ export default function ChatUI() {
                                             break;
 
                                         case 'error':
-                                            setError(parsed.error || 'An error occurred');
+                                            // Handle different error types gracefully
+                                            const errorMessage = parsed.error || 'An error occurred';
+                                            setError(errorMessage);
+                                            
+                                            // Show error in conversation
+                                            setMessages((prev) => {
+                                                const newMessages = [...prev];
+                                                if (newMessages[assistantMessageIndex]) {
+                                                    newMessages[assistantMessageIndex] = {
+                                                        ...newMessages[assistantMessageIndex],
+                                                        content: currentContent || `I encountered an error: ${errorMessage}`,
+                                                        isStreaming: false,
+                                                    };
+                                                }
+                                                return newMessages;
+                                            });
+                                            
                                             setIsProcessing(false);
                                             return;
 
@@ -371,11 +378,33 @@ export default function ChatUI() {
                                 }
                             }
                         }
-                    }
-                } catch (error) {
+                    } catch (error) {
                     console.error('Stream reading error:', error);
-                    setError('Connection lost. Please try again.');
+                    
+                    // Don't show error if stream was intentionally closed
+                    if (!reader.closed) {
+                        setError('Connection lost. Please try again.');
+                        
+                        // Show partial response if available
+                        if (currentContent) {
+                            setMessages((prev) => {
+                                const newMessages = [...prev];
+                                if (newMessages[assistantMessageIndex]) {
+                                    newMessages[assistantMessageIndex] = {
+                                        ...newMessages[assistantMessageIndex],
+                                        content: currentContent + '\n\n[Response interrupted]',
+                                        isStreaming: false,
+                                    };
+                                }
+                                return newMessages;
+                            });
+                        }
+                    }
+                    
                     setIsProcessing(false);
+                } finally {
+                    // Clean up parser state
+                    sseParser.reset();
                 }
             };
 
