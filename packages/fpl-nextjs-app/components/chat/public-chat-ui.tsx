@@ -7,11 +7,13 @@ import { Loader2, Send, PlusCircle, CheckCircle2, XCircle, RefreshCw } from 'luc
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SSEParser } from '@/utils/sse-parser';
+import { ToolEventHandler, ToolEventHandlerOptions, ToolExecutionEvent } from '@/utils/chat/tool-event-handler';
+import { StateBatchManager } from '@/utils/state-batch-manager';
 
 interface ToolExecution {
     name: string;
     displayName?: string;
-    status: 'pending' | 'complete' | 'error';
+    status: 'pending' | 'executing' | 'complete' | 'error';
     message?: string;
     executionTime?: number;
     startedAt?: number;
@@ -168,6 +170,10 @@ export default function ChatUI() {
         
         setIsProcessing(true);
         setIsRetrying(isRetry);
+        
+        // Initialize batch manager for efficient state updates
+        const batchManager = new StateBatchManager(10); // 10ms batch delay for streaming
+        const batchedSetMessages = batchManager.createBatchedSetter('messages', setMessages);
 
         try {
             // Use EventSource with POST body for streaming
@@ -207,6 +213,73 @@ export default function ChatUI() {
 
             let currentContent = '';
             const sseParser = new SSEParser();
+            
+            // Initialize tool event handler with batched updates
+            const toolHandler = new ToolEventHandler({
+                onToolStart: (event: ToolExecutionEvent) => {
+                    batchedSetMessages((prev) => {
+                        const newMessages = [...prev];
+                        if (newMessages[assistantMessageIndex]) {
+                            const existing = newMessages[assistantMessageIndex];
+                            const executions = existing.toolExecutions || [];
+                            newMessages[assistantMessageIndex] = {
+                                ...existing,
+                                usingTool: event,
+                                toolExecutions: [...executions, event],
+                            };
+                        }
+                        return newMessages;
+                    });
+                },
+                onToolUpdate: (event: ToolExecutionEvent) => {
+                    batchedSetMessages((prev) => {
+                        const newMessages = [...prev];
+                        if (newMessages[assistantMessageIndex]) {
+                            const existing = newMessages[assistantMessageIndex];
+                            newMessages[assistantMessageIndex] = {
+                                ...existing,
+                                usingTool: event,
+                                toolExecutions: existing.toolExecutions?.map(e => 
+                                    e.name === event.name ? event : e
+                                ),
+                            };
+                        }
+                        return newMessages;
+                    });
+                },
+                onToolComplete: (event: ToolExecutionEvent) => {
+                    batchedSetMessages((prev) => {
+                        const newMessages = [...prev];
+                        if (newMessages[assistantMessageIndex]) {
+                            const existing = newMessages[assistantMessageIndex];
+                            newMessages[assistantMessageIndex] = {
+                                ...existing,
+                                usingTool: event,
+                                toolExecutions: existing.toolExecutions?.map(e => 
+                                    e.name === event.name ? { ...event, status: 'complete' } : e
+                                ),
+                            };
+                        }
+                        return newMessages;
+                    });
+                },
+                onToolError: (event: ToolExecutionEvent) => {
+                    batchedSetMessages((prev) => {
+                        const newMessages = [...prev];
+                        if (newMessages[assistantMessageIndex]) {
+                            const existing = newMessages[assistantMessageIndex];
+                            newMessages[assistantMessageIndex] = {
+                                ...existing,
+                                usingTool: event,
+                                toolExecutions: existing.toolExecutions?.map(e => 
+                                    e.name === event.name ? { ...event, status: 'error' } : e
+                                ),
+                            };
+                        }
+                        return newMessages;
+                    });
+                }
+            });
 
             // Read the stream
             const processStream = async () => {
@@ -243,7 +316,7 @@ export default function ChatUI() {
 
                                         case 'text':
                                             currentContent += parsed.content;
-                                            setMessages((prev) => {
+                                            batchedSetMessages((prev) => {
                                                 const newMessages = [...prev];
                                                 if (newMessages[assistantMessageIndex]) {
                                                     newMessages[assistantMessageIndex] = {
@@ -257,92 +330,9 @@ export default function ChatUI() {
                                             break;
 
                                         case 'tool-start':
-                                            setMessages((prev) => {
-                                                const newMessages = [...prev];
-                                                if (newMessages[assistantMessageIndex]) {
-                                                    const toolExecution: ToolExecution = {
-                                                        name: parsed.name,
-                                                        displayName: parsed.displayName,
-                                                        status: parsed.status || 'pending',
-                                                        message: parsed.message,
-                                                        startedAt: Date.now()
-                                                    };
-                                                    
-                                                    newMessages[assistantMessageIndex] = {
-                                                        ...newMessages[assistantMessageIndex],
-                                                        usingTool: toolExecution,
-                                                        toolExecutions: [
-                                                            ...(newMessages[assistantMessageIndex].toolExecutions || []),
-                                                            toolExecution
-                                                        ]
-                                                    };
-                                                }
-                                                return newMessages;
-                                            });
-                                            break;
-
                                         case 'tool-result':
-                                            setMessages((prev) => {
-                                                const newMessages = [...prev];
-                                                if (newMessages[assistantMessageIndex]) {
-                                                    const existingTool = newMessages[assistantMessageIndex].usingTool;
-                                                    const updatedTool: ToolExecution = {
-                                                        name: parsed.name,
-                                                        displayName: parsed.displayName || existingTool?.displayName,
-                                                        status: parsed.status || 'complete',
-                                                        message: parsed.message,
-                                                        executionTime: parsed.executionTime
-                                                    };
-                                                    
-                                                    // Update the current tool
-                                                    newMessages[assistantMessageIndex] = {
-                                                        ...newMessages[assistantMessageIndex],
-                                                        usingTool: updatedTool
-                                                    };
-                                                    
-                                                    // Update in the executions array
-                                                    if (newMessages[assistantMessageIndex].toolExecutions) {
-                                                        const executions = newMessages[assistantMessageIndex].toolExecutions;
-                                                        const toolIndex = executions.findIndex(t => t.name === parsed.name && t.status === 'pending');
-                                                        if (toolIndex !== -1) {
-                                                            executions[toolIndex] = updatedTool;
-                                                        }
-                                                    }
-                                                }
-                                                return newMessages;
-                                            });
-                                            break;
-
                                         case 'tool-error':
-                                            setMessages((prev) => {
-                                                const newMessages = [...prev];
-                                                if (newMessages[assistantMessageIndex]) {
-                                                    const existingTool = newMessages[assistantMessageIndex].usingTool;
-                                                    const errorTool: ToolExecution = {
-                                                        name: parsed.name || existingTool?.name || 'unknown',
-                                                        displayName: parsed.displayName || existingTool?.displayName,
-                                                        status: 'error',
-                                                        message: parsed.userFriendlyError || parsed.error || 'Tool failed',
-                                                        executionTime: parsed.executionTime
-                                                    };
-                                                    
-                                                    // Update the current tool
-                                                    newMessages[assistantMessageIndex] = {
-                                                        ...newMessages[assistantMessageIndex],
-                                                        usingTool: errorTool
-                                                    };
-                                                    
-                                                    // Update in the executions array
-                                                    if (newMessages[assistantMessageIndex].toolExecutions) {
-                                                        const executions = newMessages[assistantMessageIndex].toolExecutions;
-                                                        const toolIndex = executions.findIndex(t => t.name === parsed.name && t.status === 'pending');
-                                                        if (toolIndex !== -1) {
-                                                            executions[toolIndex] = errorTool;
-                                                        }
-                                                    }
-                                                }
-                                                return newMessages;
-                                            });
+                                            toolHandler.handleToolEvent(eventType, parsed);
                                             break;
 
                                         case 'error':
@@ -351,7 +341,7 @@ export default function ChatUI() {
                                             setError(errorMessage);
                                             
                                             // Show error in conversation
-                                            setMessages((prev) => {
+                                            batchedSetMessages((prev) => {
                                                 const newMessages = [...prev];
                                                 if (newMessages[assistantMessageIndex]) {
                                                     newMessages[assistantMessageIndex] = {
@@ -368,7 +358,7 @@ export default function ChatUI() {
 
 
                                         case 'done':
-                                            setMessages((prev) => {
+                                            batchedSetMessages((prev) => {
                                                 const newMessages = [...prev];
                                                 if (newMessages[assistantMessageIndex]) {
                                                     const message = newMessages[assistantMessageIndex];
@@ -379,6 +369,7 @@ export default function ChatUI() {
                                                 }
                                                 return newMessages;
                                             });
+                                            batchManager.flushUpdates(); // Ensure all pending updates are applied
                                             setIsProcessing(false);
                                             return;
                                     }
@@ -396,7 +387,7 @@ export default function ChatUI() {
                         
                         // Show partial response if available
                         if (currentContent) {
-                            setMessages((prev) => {
+                            batchedSetMessages((prev) => {
                                 const newMessages = [...prev];
                                 if (newMessages[assistantMessageIndex]) {
                                     newMessages[assistantMessageIndex] = {
@@ -424,8 +415,9 @@ export default function ChatUI() {
                     
                     setIsProcessing(false);
                 } finally {
-                    // Clean up parser state
+                    // Clean up parser state and flush any pending updates
                     sseParser.reset();
+                    batchManager.flushUpdates();
                 }
             };
 
@@ -454,7 +446,7 @@ export default function ChatUI() {
                 setError(`${errorMessage} Please try again.`);
                 setIsProcessing(false);
                 
-                setMessages((prev) => [
+                batchedSetMessages((prev) => [
                     ...prev,
                     {
                         role: 'assistant',
