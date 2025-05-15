@@ -77,27 +77,18 @@ function getUserFriendlyError(error: string | any, toolName: string): string {
   return toolFallbacks[toolName] || 'I encountered an issue with that request. Please try rephrasing or asking something else.';
 }
 
-// Helper function to determine tool choice based on message context
+// Helper function to determine tool choice - minimal intervention, maximum Claude trust
 function determineToolChoice(message: string, context?: any) {
-  const lowerMessage = message.toLowerCase();
+  // Only intervene in very specific cases where we want to prevent tool use
+  const lowerMessage = message.toLowerCase().trim();
   
-  // Force tool use for specific patterns
-  if (lowerMessage.includes('who is') || 
-      lowerMessage.includes('top scorer') ||
-      lowerMessage.includes('how many') ||
-      lowerMessage.includes('player stats') ||
-      lowerMessage.includes('fpl points')) {
-    return { type: 'any' as const }; // Force tool use
+  // Don't use tools for simple greetings
+  if (lowerMessage.match(/^(hi|hello|hey|bye|goodbye|thanks|thank you)$/)) {
+    return { type: 'none' as const };
   }
   
-  // Never use tools for general chat
-  if (lowerMessage.includes('hello') || 
-      lowerMessage.includes('thanks') ||
-      lowerMessage.includes('goodbye')) {
-    return { type: 'none' as const }; // No tools
-  }
-  
-  // Auto for everything else
+  // For everything else, trust Claude to make the right choice
+  // Claude is sophisticated enough to understand context and choose appropriately
   return { type: 'auto' as const };
 }
 
@@ -283,9 +274,6 @@ export async function POST(req: NextRequest) {
         const metrics = await getConversationMetrics(chatId || '');
         console.log('Conversation metrics:', metrics);
         
-        // Determine if we should use tools for this query
-        const shouldUseToolsForQuery = shouldUseTool(message);
-        
         // Format the context messages for Claude
         const contextMessages = context ? formatContextForClaude(context) : [];
         
@@ -301,8 +289,8 @@ export async function POST(req: NextRequest) {
           max_tokens: CLAUDE_CONFIG.MAX_TOKENS_DEFAULT,
           system: CLAUDE_SYSTEM_PROMPT,
           messages: [...contextMessages, { role: 'user', content: message }],
-          tools: shouldUseToolsForQuery ? toolsForClaude : [],
-          tool_choice: shouldUseToolsForQuery ? determineToolChoice(message, context) : { type: 'none' },
+          tools: toolsForClaude, // Always provide tools - trust Claude to decide when to use them
+          tool_choice: determineToolChoice(message, context), // Minimal override for greetings only
           stream: true,
         });
 
