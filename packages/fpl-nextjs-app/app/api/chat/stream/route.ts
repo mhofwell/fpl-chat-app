@@ -14,6 +14,7 @@ import { TextBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources';
 import { Metrics } from '@/utils/monitoring/metrics';
 import { needsSummarization, compressConversation } from '@/utils/claude/conversation-summarizer';
 import { claudeNativeSystemPrompt } from '@/lib/prompts/claude-native-prompt';
+import { needsTokenCompression, calculateMessageTokens, compressMessages } from '@/utils/claude/token-manager';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -249,24 +250,38 @@ export async function POST(req: NextRequest) {
         // Retrieve conversation context
         let context = await getChatContext(chatId || '');
         
-        // Create new user message object
+        // Create new user message object with accurate token count
         const userMessage: ChatMessage = {
           role: 'user',
           content: message,
           timestamp: new Date().toISOString(),
-          tokenCount: Math.ceil(message.length / 4) // Rough estimate
+          tokenCount: calculateMessageTokens({
+            role: 'user',
+            content: message
+          }, CLAUDE_CONFIG.MODEL_VERSION)
         };
         
         // Update context with the new message
         if (context) {
           await updateChatContext(chatId || '', [userMessage], validSessionId);
           
-          // Check if we need to compress the conversation
-          if (context.totalTokens && needsSummarization(context.messages, context.totalTokens)) {
-            console.log('Compressing conversation due to token limit');
-            const compressedMessages = await compressConversation(context.messages);
-            context.messages = compressedMessages;
-            await updateChatContext(chatId || '', [], validSessionId); // Update with compressed context
+          // Check if we need to compress the conversation using sophisticated token analysis
+          if (needsTokenCompression(context.messages, CLAUDE_CONFIG.MODEL_VERSION)) {
+            console.log('Compressing conversation due to approaching token limit');
+            
+            // Use our priority-based message compression
+            const compressedMessages = compressMessages(
+              context.messages,
+              CLAUDE_CONFIG.MAX_TOKENS_EXTENDED * 50, // Allow ~75k tokens for history
+              CLAUDE_CONFIG.MODEL_VERSION
+            );
+            
+            // Additionally, try to summarize the compressed messages
+            const furtherCompressed = await compressConversation(compressedMessages);
+            context.messages = furtherCompressed;
+            
+            // Update context with compressed messages
+            await updateChatContext(chatId || '', [], validSessionId);
           }
         }
         
@@ -791,7 +806,10 @@ export async function POST(req: NextRequest) {
             role: 'assistant',
             content: completeResponse,
             timestamp: new Date().toISOString(),
-            tokenCount: Math.ceil(completeResponse.length / 4),
+            tokenCount: calculateMessageTokens({
+              role: 'assistant',
+              content: completeResponse
+            }, CLAUDE_CONFIG.MODEL_VERSION),
             tool_calls: allToolCalls.filter(tc => tc.input).map(tc => ({
               id: tc.id,
               name: tc.name,

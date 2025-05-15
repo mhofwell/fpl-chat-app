@@ -1,9 +1,10 @@
 // utils/claude/context-manager-redis.ts
 
 import { createClient } from '@/utils/supabase/server'
-import { CONTEXT_CONFIG } from '../../config/ai-config'
+import { CONTEXT_CONFIG, CLAUDE_CONFIG } from '../../config/ai-config'
 import redis from '../../lib/redis/redis-client'
 import { fetchWithCache } from '../../lib/redis/cache-helper'
+import { calculateMessageTokens } from './token-manager'
 
 export type ChatMessage = {
   id?: string
@@ -150,23 +151,21 @@ export async function updateChatContext(
       sum + (msg.tokenCount || 0), 0
     )
     
-    // Trim to max history size (but keep more messages if we have token count)
+    // Trim to max history size using sophisticated token compression
     if (context.messages.length > CONTEXT_CONFIG.MAX_HISTORY_MESSAGES) {
-      // If we have token counts, trim by tokens instead of message count
+      // If we have token counts, use priority-based compression
       if (context.totalTokens && context.totalTokens > 100000) { // ~100k token limit
-        // Keep messages that fit within token limit
-        let tokenSum = 0
-        let keepIndex = context.messages.length
+        const { compressMessages, needsTokenCompression } = await import('./token-manager')
         
-        for (let i = context.messages.length - 1; i >= 0; i--) {
-          tokenSum += context.messages[i].tokenCount || 0
-          if (tokenSum > 100000) {
-            keepIndex = i + 1
-            break
-          }
+        // Check if compression is needed
+        if (needsTokenCompression(context.messages, CLAUDE_CONFIG.MODEL_VERSION)) {
+          // Use our priority-based compression with 80k token budget to leave room for new messages
+          context.messages = compressMessages(
+            context.messages,
+            80000, // Leave 20k for new messages
+            CLAUDE_CONFIG.MODEL_VERSION
+          )
         }
-        
-        context.messages = context.messages.slice(keepIndex)
       } else {
         // Fall back to message count limit
         context.messages = context.messages.slice(-CONTEXT_CONFIG.MAX_HISTORY_MESSAGES)
@@ -253,8 +252,8 @@ function truncateMessage(content: string, maxLength: number): string {
  */
 function estimateTokenCount(content: string): number {
   if (!content) return 0
-  // Rough estimate: 1 token ≈ 4 characters
-  return Math.ceil(content.length / 4)
+  // Use accurate token counting from our token manager
+  return calculateMessageTokens({ content }, CLAUDE_CONFIG.MODEL_VERSION)
 }
 
 /**
