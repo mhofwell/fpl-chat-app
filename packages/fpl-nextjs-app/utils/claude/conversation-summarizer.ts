@@ -3,6 +3,7 @@
 import { Anthropic } from '@anthropic-ai/sdk'
 import { CLAUDE_CONFIG } from '../../config/ai-config'
 import type { ChatMessage } from './context-manager-redis'
+import { TextBlock } from '@anthropic-ai/sdk/resources'
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || ''
@@ -74,7 +75,16 @@ export async function summarizeConversation(
       ]
     })
     
-    const summary = response.content[0].text
+    // Extract text from the response
+    const textBlock = response.content.find(
+      (block): block is TextBlock => block.type === 'text'
+    )
+    
+    if (!textBlock) {
+      return null
+    }
+    
+    const summary = textBlock.text
     
     // Return summary as a system message
     return {
@@ -238,7 +248,16 @@ export async function extractKeyTopics(
       ]
     })
     
-    const topics = response.content[0].text
+    // Extract text from the response
+    const textBlock = response.content.find(
+      (block): block is TextBlock => block.type === 'text'
+    )
+    
+    if (!textBlock) {
+      return []
+    }
+    
+    const topics = textBlock.text
       .split(',')
       .map(t => t.trim())
       .filter(t => t.length > 0)
