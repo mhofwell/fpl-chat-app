@@ -252,10 +252,25 @@ export async function POST(req: NextRequest) {
               // Use already executed results
               const result = toolCall.result;
               console.log(`Tool result for ${toolCall.name}:`, result.success ? 'success' : 'error');
+              // Tool results from MCP come as an array of content blocks
+              // We need to convert this to a string for Claude
+              let contentString = '';
+              if (result.success && Array.isArray(result.result)) {
+                // Extract text from content blocks
+                contentString = result.result
+                  .filter((item: any) => item.type === 'text')
+                  .map((item: any) => item.text)
+                  .join('\n');
+              } else if (result.success) {
+                contentString = JSON.stringify(result.result);
+              } else {
+                contentString = `Error: ${result.error}`;
+              }
+              
               return {
                 type: 'tool_result' as const,
                 tool_use_id: toolCall.id,
-                content: result.success ? JSON.stringify(result.result) : JSON.stringify({ error: result.error })
+                content: contentString
               };
             });
           
@@ -310,6 +325,8 @@ export async function POST(req: NextRequest) {
                 content: toolResults
               }
             ],
+            tools: toolsForClaude,
+            tool_choice: { type: 'auto' },
             stream: true,
           });
           
@@ -418,10 +435,25 @@ export async function POST(req: NextRequest) {
             
             const toolResults = toolsWithResults.map((toolCall) => {
               const result = toolCall.result;
+              // Tool results from MCP come as an array of content blocks
+              // We need to convert this to a string for Claude
+              let contentString = '';
+              if (result.success && Array.isArray(result.result)) {
+                // Extract text from content blocks
+                contentString = result.result
+                  .filter((item: any) => item.type === 'text')
+                  .map((item: any) => item.text)
+                  .join('\n');
+              } else if (result.success) {
+                contentString = JSON.stringify(result.result);
+              } else {
+                contentString = `Error: ${result.error}`;
+              }
+              
               return {
                 type: 'tool_result' as const,
                 tool_use_id: toolCall.id,
-                content: result.success ? JSON.stringify(result.result) : JSON.stringify({ error: result.error })
+                content: contentString
               };
             });
             
@@ -449,6 +481,8 @@ export async function POST(req: NextRequest) {
                   content: toolResults
                 }
               ],
+              tools: toolsForClaude,
+              tool_choice: { type: 'auto' },
               stream: true,
             });
             
