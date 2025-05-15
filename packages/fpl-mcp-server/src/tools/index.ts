@@ -7,8 +7,42 @@ import { getGameweek } from './fpl/gameweek'; // Main function for gameweek data
 import { searchFixtures } from './fpl/search-fixtures';
 import { searchPlayers } from './fpl/search-players'; // We will create this file next
 import { compareEntities } from './fpl/compare-entities'; // We will create the main function later
+import { fplMVPTools } from './fpl/index'; // Import MVP tools
 
 export function registerTools(server: McpServer) {
+    // Register MVP tools first
+    Object.entries(fplMVPTools).forEach(([name, tool]) => {
+        // Convert the schema to use Zod
+        const properties = tool.inputSchema.properties;
+        let schema: any = {};
+        
+        // Convert each property to Zod schema
+        Object.entries(properties).forEach(([key, prop]: [string, any]) => {
+            if (prop.type === 'string') {
+                schema[key] = prop.enum ? z.enum(prop.enum) : z.string();
+            } else if (prop.type === 'number') {
+                schema[key] = z.number();
+            } else if (prop.type === 'boolean') {
+                schema[key] = z.boolean();
+            }
+            
+            // Add description
+            if (prop.description) {
+                schema[key] = schema[key].describe(prop.description);
+            }
+            
+            // Make optional if not required
+            if (!tool.inputSchema.required?.includes(key)) {
+                schema[key] = schema[key].optional();
+            }
+        });
+        
+        // Register the tool with MCP server
+        server.tool(name, schema, async (input: any) => {
+            return await tool.handler(input);
+        });
+    });
+    
     // FPL tools
     server.tool('get-team', {
         teamQuery: z.string().describe("Team name (supports partial/fuzzy match) or exact FPL team ID."),
