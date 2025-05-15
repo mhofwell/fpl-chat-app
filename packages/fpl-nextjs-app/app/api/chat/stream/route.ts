@@ -175,6 +175,7 @@ async function executeToolWithRetry(
   };
 }
 
+
 // Sequential tool execution using ToolCoordinator
 async function executeWithToolCoordinator(
   message: string,
@@ -443,11 +444,11 @@ export async function POST(req: NextRequest) {
                   role: 'assistant',
                   content: completeResponse
                 }, CLAUDE_CONFIG.MODEL_VERSION),
-                tool_calls: result.toolResults.map(tr => ({
+                tool_calls: result.toolResults?.map((tr: any) => ({
                   id: tr.toolId,
                   name: tr.name,
                   input: tr.result
-                }))
+                })) || []
               };
               
               await updateChatContext(chatId, [assistantMessage], validSessionId);

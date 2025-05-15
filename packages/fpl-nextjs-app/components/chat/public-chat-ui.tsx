@@ -350,13 +350,15 @@ export default function ChatUI() {
                                             setIsProcessing(false);
                                             return;
 
+
                                         case 'done':
                                             setMessages((prev) => {
                                                 const newMessages = [...prev];
                                                 if (newMessages[assistantMessageIndex]) {
+                                                    const message = newMessages[assistantMessageIndex];
                                                     newMessages[assistantMessageIndex] = {
-                                                        ...newMessages[assistantMessageIndex],
-                                                        isStreaming: false,
+                                                        ...message,
+                                                        isStreaming: false
                                                     };
                                                 }
                                                 return newMessages;
@@ -491,6 +493,7 @@ export default function ChatUI() {
                                     : 'bg-muted'
                             }`}
                         >
+
                             {/* Tool execution timeline for multiple tools */}
                             {message.toolExecutions && message.toolExecutions.length > 1 && (
                                 <ToolExecutionTimeline executions={message.toolExecutions} />

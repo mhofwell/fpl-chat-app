@@ -35,7 +35,7 @@ export interface ToolPipelineState {
 }
 
 export class ToolPipeline {
-  private state: ToolPipelineState;
+  state: ToolPipelineState;
   private onToolUpdate?: (tool: ToolCall) => void;
   
   constructor(
@@ -182,10 +182,10 @@ export class ToolPipeline {
       .forEach(tool => {
         if (tool.status === 'completed') {
           messages.push({
-            role: 'assistant',
+            role: 'assistant' as const,
             content: [
               {
-                type: 'tool_result',
+                type: 'tool_result' as const,
                 tool_use_id: tool.id,
                 content: JSON.stringify(tool.result)
               }
@@ -193,10 +193,10 @@ export class ToolPipeline {
           });
         } else {
           messages.push({
-            role: 'assistant',
+            role: 'assistant' as const,
             content: [
               {
-                type: 'tool_result',
+                type: 'tool_result' as const,
                 tool_use_id: tool.id,
                 is_error: true,
                 content: tool.error || 'Tool execution failed'

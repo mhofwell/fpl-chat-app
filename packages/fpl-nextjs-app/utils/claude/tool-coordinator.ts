@@ -52,12 +52,15 @@ export class ToolCoordinator {
     metrics: any;
   }> {
     let finalResponse = '';
+    let allToolResults: any[] = [];
     
     // Initial Claude call to determine first set of tools
-    const initialStream = await this.createClaudeStream([
+    const initialMessages: MessageParam[] = [
       ...this.pipeline.buildContextMessages(),
-      { role: 'user', content: userMessage }
-    ]);
+      { role: 'user' as const, content: userMessage }
+    ];
+    
+    const initialStream = await this.createClaudeStream(initialMessages);
     
     // Process initial stream
     const initialTools = await this.processStream(initialStream);
@@ -70,6 +73,7 @@ export class ToolCoordinator {
     // Execute tools in phases
     while (!this.pipeline.isComplete() && this.pipeline.nextPhase()) {
       // Execute all ready tools
+      const phaseResults = [];
       while (true) {
         const tool = await this.pipeline.executeNext(toolExecutor);
         if (!tool) break;
@@ -77,34 +81,72 @@ export class ToolCoordinator {
         // Store result for future reference
         if (tool.status === 'completed') {
           this.resultMap.set(tool.id, tool.result);
+          phaseResults.push({
+            type: 'tool_result' as const,
+            tool_use_id: tool.id,
+            content: typeof tool.result === 'object' ? JSON.stringify(tool.result) : String(tool.result),
+            is_error: false
+          });
+          allToolResults.push(tool);
+        } else if (tool.status === 'error') {
+          phaseResults.push({
+            type: 'tool_result' as const,
+            tool_use_id: tool.id,
+            content: tool.error || 'Tool execution failed',
+            is_error: true
+          });
         }
       }
       
-      // Get Claude's next instructions based on results
-      const contextMessages = this.pipeline.buildContextMessages();
-      const followUpStream = await this.createClaudeStream(contextMessages);
-      
-      // Process follow-up stream
-      const followUpTools = await this.processStream(followUpStream);
-      
-      // Add new tools to pipeline
-      followUpTools.forEach(tool => {
-        this.pipeline.addTool(tool);
-      });
-      
-      // Capture final response if no more tools
-      if (followUpTools.length === 0) {
-        // Final response stream
-        for await (const event of followUpStream) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text') {
-            finalResponse += event.delta.text;
-            this.options.onStreamEvent?.({
-              type: 'text',
-              content: event.delta.text
-            });
+      // If we have results from this phase, get Claude's next instructions
+      if (phaseResults.length > 0) {
+        // Build messages including tool results
+        const contextMessages = this.pipeline.buildContextMessages();
+        const messagesWithResults = [
+          ...contextMessages,
+          {
+            role: 'assistant' as const,
+            content: initialTools.map(t => ({
+              type: 'tool_use' as const,
+              id: t.id,
+              name: t.name,
+              input: t.input
+            }))
+          },
+          {
+            role: 'user' as const,
+            content: phaseResults
           }
+        ];
+        
+        const followUpStream = await this.createClaudeStream(messagesWithResults);
+        
+        // Process follow-up stream
+        const followUpTools = await this.processStream(followUpStream);
+        
+        // Add new tools to pipeline
+        followUpTools.forEach(tool => {
+          this.pipeline.addTool(tool);
+        });
+        
+        // If no more tools, capture final response
+        if (followUpTools.length === 0) {
+          const finalStream = await this.createClaudeStream([
+            ...messagesWithResults,
+            { role: 'user', content: 'Please provide a comprehensive answer to the original question using all the tool results.' }
+          ]);
+          
+          for await (const event of finalStream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              finalResponse += event.delta.text;
+              this.options.onStreamEvent?.({
+                type: 'text',
+                content: event.delta.text
+              });
+            }
+          }
+          break;
         }
-        break;
       }
     }
     
@@ -112,7 +154,11 @@ export class ToolCoordinator {
       finalResponse,
       toolResults: this.pipeline.getResults(),
       errors: this.pipeline.getErrors(),
-      metrics: this.pipeline.getMetrics()
+      metrics: {
+        ...this.pipeline.getMetrics(),
+        totalTools: allToolResults.length,
+        phases: this.pipeline.state.currentPhase
+      }
     };
   }
 
@@ -135,6 +181,23 @@ export class ToolCoordinator {
    * Enhanced system prompt for better sequential tool use
    */
   private enhancedSystemPrompt(): string {
+    const toolResults = Array.from(this.resultMap.entries())
+      .map(([id, result]) => {
+        const tool = this.pipeline.state.tools.find(t => t.id === id);
+        if (!tool) return '';
+        return `Tool: ${tool.name} (ID: ${id})
+Result: ${typeof result === 'object' ? JSON.stringify(result, null, 2) : result}`;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+
+    const resultsContext = toolResults ? `
+## Previous Tool Results
+${toolResults}
+
+You can reference these results when deciding which tools to call next.
+` : '';
+
     return `${this.options.systemPrompt}
 
 When using tools in sequence:
@@ -144,11 +207,14 @@ When using tools in sequence:
 4. Provide clear context about what each tool is doing
 5. Summarize results comprehensively when all tools complete
 
+${resultsContext}
+
 Remember:
 - You can chain multiple tools together to accomplish complex tasks
 - Previous tool results are available for use in subsequent calls
 - Be efficient and avoid redundant tool calls
-- Explain your reasoning when the sequence might not be obvious`;
+- Explain your reasoning when the sequence might not be obvious
+- Focus on answering the user's original question using the accumulated results`;
   }
 
   /**
@@ -157,6 +223,8 @@ Remember:
   private async processStream(stream: Stream<any>): Promise<any[]> {
     const toolCalls: any[] = [];
     let currentToolCall: any = null;
+    let currentToolPartialJson = '';
+    let textAccumulated = '';
     
     for await (const event of stream) {
       switch (event.type) {
@@ -165,32 +233,63 @@ Remember:
             currentToolCall = {
               id: event.content_block.id,
               name: event.content_block.name,
-              input: {}
+              input: {},
+              partialJson: ''
             };
+            currentToolPartialJson = '';
             
             this.options.onStreamEvent?.({
               type: 'tool-start',
               id: event.content_block.id,
               name: event.content_block.name
             });
+          } else if (event.content_block.type === 'text') {
+            this.options.onStreamEvent?.({
+              type: 'text-start'
+            });
           }
           break;
           
         case 'content_block_delta':
-          if (event.delta.type === 'tool_use' && currentToolCall) {
-            if (event.delta.input) {
-              currentToolCall.input = {
-                ...currentToolCall.input,
-                ...JSON.parse(event.delta.input)
-              };
+          if (event.delta.type === 'input_json_delta' && currentToolCall) {
+            // Accumulate partial JSON
+            currentToolPartialJson += event.delta.partial_json;
+            currentToolCall.partialJson = currentToolPartialJson;
+          } else if (event.delta.type === 'text' || event.delta.type === 'text_delta') {
+            const text = event.delta.text;
+            if (text) {
+              textAccumulated += text;
+              this.options.onStreamEvent?.({
+                type: 'text',
+                content: text
+              });
             }
           }
           break;
           
         case 'content_block_stop':
           if (currentToolCall) {
-            toolCalls.push(currentToolCall);
+            // Parse the complete JSON
+            try {
+              currentToolCall.input = JSON.parse(currentToolPartialJson);
+              delete currentToolCall.partialJson; // Clean up
+              toolCalls.push(currentToolCall);
+            } catch (error) {
+              console.error('Error parsing tool input JSON:', error);
+              currentToolCall.error = 'Failed to parse input';
+              toolCalls.push(currentToolCall);
+            }
             currentToolCall = null;
+            currentToolPartialJson = '';
+          }
+          break;
+          
+        case 'message_delta':
+          if (event.delta.stop_reason) {
+            this.options.onStreamEvent?.({
+              type: 'message-stop',
+              reason: event.delta.stop_reason
+            });
           }
           break;
       }
