@@ -466,11 +466,11 @@ AVAILABLE TOOLS:
           console.log('Follow-up stream completed');
           
           // Handle multiple tool calls with recursive processing
-          async function processFollowUpToolCalls(
+          const processFollowUpToolCalls = async function(
             toolCalls: any[], 
             previousMessages: any[],
             depth: number = 0
-          ) {
+          ): Promise<void> {
             if (depth > 5) { // Safety limit to prevent infinite recursion
               console.error('Max tool call depth reached');
               sendEvent('error', { error: 'Maximum tool call depth exceeded' });
