@@ -15,6 +15,8 @@ import { Metrics } from '@/utils/monitoring/metrics';
 import { needsSummarization, compressConversation } from '@/utils/claude/conversation-summarizer';
 import { claudeNativeSystemPrompt } from '@/lib/prompts/claude-native-prompt';
 import { needsTokenCompression, calculateMessageTokens, compressMessages } from '@/utils/claude/token-manager';
+import { ToolCoordinator } from '@/utils/claude/tool-coordinator';
+import { ToolCall } from '@/utils/claude/tool-pipeline';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -22,6 +24,9 @@ const anthropic = new Anthropic({
 });
 
 export const runtime = 'nodejs';
+
+// Feature flag for new sequential tool execution
+const USE_SEQUENTIAL_TOOL_COORDINATOR = process.env.USE_SEQUENTIAL_TOOLS === 'true';
 
 // Helper function to get user-friendly tool display names
 function getToolDisplayName(toolName: string): string {
@@ -170,6 +175,114 @@ async function executeToolWithRetry(
   };
 }
 
+// Sequential tool execution using ToolCoordinator
+async function executeWithToolCoordinator(
+  message: string,
+  contextMessages: any[],
+  validSessionId: string,
+  chatId: string,
+  sendEvent: (event: string, data: any) => void
+) {
+  const coordinator = new ToolCoordinator(
+    validSessionId,
+    chatId,
+    contextMessages,
+    {
+      anthropic,
+      model: CLAUDE_CONFIG.MODEL_VERSION,
+      maxTokens: CLAUDE_CONFIG.MAX_TOKENS_EXTENDED,
+      systemPrompt: claudeNativeSystemPrompt.prompt,
+      tools: toolsForClaude,
+      onToolUpdate: (tool: ToolCall) => {
+        // Send real-time updates to frontend
+        const displayName = getToolDisplayName(tool.name);
+        
+        if (tool.status === 'pending') {
+          sendEvent('tool-start', {
+            id: tool.id,
+            name: tool.name,
+            displayName,
+            status: 'pending',
+            message: `Preparing to use ${displayName}...`
+          });
+        } else if (tool.status === 'executing') {
+          sendEvent('tool-start', {
+            id: tool.id,
+            name: tool.name,
+            displayName,
+            status: 'executing',
+            message: `Executing ${displayName}...`
+          });
+        } else if (tool.status === 'completed') {
+          sendEvent('tool-result', {
+            id: tool.id,
+            name: tool.name,
+            displayName,
+            status: 'complete',
+            executionTime: tool.executionTime,
+            message: `${displayName} completed successfully`
+          });
+        } else if (tool.status === 'error') {
+          sendEvent('tool-error', {
+            id: tool.id,
+            name: tool.name,
+            displayName,
+            status: 'error',
+            error: tool.error,
+            userFriendlyError: getUserFriendlyError(tool.error || '', tool.name),
+            message: `${displayName} encountered an error`
+          });
+        }
+      },
+      onStreamEvent: (event: any) => {
+        if (event.type === 'text') {
+          sendEvent('text', { content: event.content });
+        }
+      }
+    }
+  );
+
+  // Tool executor function
+  const toolExecutor = async (tool: ToolCall) => {
+    const result = await executeToolWithRetry(tool.name, tool.input, validSessionId);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Tool execution failed');
+    }
+    
+    // Convert MCP content blocks to string
+    let contentString = '';
+    if (Array.isArray(result.result)) {
+      contentString = result.result
+        .filter((item: any) => item.type === 'text')
+        .map((item: any) => item.text)
+        .join('\n');
+    } else {
+      contentString = JSON.stringify(result.result);
+    }
+    
+    return contentString;
+  };
+
+  // Execute the sequence
+  const result = await coordinator.executeSequence(message, toolExecutor);
+  
+  // Send final metrics
+  sendEvent('metrics', {
+    toolsExecuted: result.metrics.total,
+    successful: result.metrics.completed,
+    failed: result.metrics.failed,
+    totalTime: result.metrics.totalExecutionTime
+  });
+  
+  return {
+    completeResponse: result.finalResponse,
+    toolResults: result.toolResults,
+    errors: result.errors,
+    metrics: result.metrics
+  };
+}
+
 export async function POST(req: NextRequest) {
   console.log('Stream route: Received POST request');
   
@@ -299,6 +412,68 @@ export async function POST(req: NextRequest) {
         const CLAUDE_SYSTEM_PROMPT = claudeNativeSystemPrompt.prompt;
         console.log('Using Claude-native prompt');
         
+        let completeResponse = '';
+        let toolCalls: any[] = [];
+        let followUpToolCalls: any[] = [];
+        
+        // Check if we should use the new sequential tool coordinator
+        if (USE_SEQUENTIAL_TOOL_COORDINATOR) {
+          console.log('Using sequential tool coordinator');
+          try {
+            const result = await executeWithToolCoordinator(
+              message,
+              [...contextMessages, { role: 'user', content: message }],
+              validSessionId,
+              chatId || '',
+              sendEvent
+            );
+            
+            completeResponse = result.completeResponse;
+            
+            // Send the final response
+            sendEvent('done', { complete: true });
+            
+            // Store Claude's response for authenticated user
+            if (user && chatId && completeResponse) {
+              const assistantMessage: ChatMessage = {
+                role: 'assistant',
+                content: completeResponse,
+                timestamp: new Date().toISOString(),
+                tokenCount: calculateMessageTokens({
+                  role: 'assistant',
+                  content: completeResponse
+                }, CLAUDE_CONFIG.MODEL_VERSION),
+                tool_calls: result.toolResults.map(tr => ({
+                  id: tr.toolId,
+                  name: tr.name,
+                  input: tr.result
+                }))
+              };
+              
+              await updateChatContext(chatId, [assistantMessage], validSessionId);
+              await supabase.from('messages').insert({
+                chat_id: chatId,
+                content: completeResponse,
+                role: 'assistant',
+                token_count: assistantMessage.tokenCount,
+                tool_calls: assistantMessage.tool_calls
+              });
+            }
+            
+            controller.close();
+            return;
+          } catch (error) {
+            console.error('Error with sequential tool coordinator:', error);
+            sendEvent('error', { 
+              error: 'An error occurred while processing your request',
+              details: error instanceof Error ? error.message : 'Unknown error'
+            });
+            controller.close();
+            return;
+          }
+        }
+        
+        // Original implementation for backward compatibility
         const stream = await anthropic.messages.create({
           model: CLAUDE_CONFIG.MODEL_VERSION,
           max_tokens: CLAUDE_CONFIG.MAX_TOKENS_DEFAULT,
@@ -309,11 +484,8 @@ export async function POST(req: NextRequest) {
           stream: true,
         });
 
-        let completeResponse = '';
-        let toolCalls: any[] = [];
         let currentBlockIndex = 0;
         let currentBlockId: string | null = null;
-        let followUpToolCalls: any[] = [];
 
         for await (const chunk of stream) {
           if (chunk.type === 'content_block_start') {
