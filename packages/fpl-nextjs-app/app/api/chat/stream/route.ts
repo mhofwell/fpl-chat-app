@@ -264,9 +264,9 @@ export async function POST(req: NextRequest) {
           // Ensure we have tool results
           if (toolResults.length === 0) {
             console.error('No tool results to send in follow-up');
-            // Send a message explaining the issue and keep the conversation going
+            // This should rarely happen - only if tool execution failed entirely
             sendEvent('text', { 
-              content: "I wasn't able to retrieve the information you requested. Could you please rephrase your question or ask something else?" 
+              content: "I encountered an error while retrieving the data. Please try again." 
             });
             sendEvent('done', { complete: true });
             controller.close();
@@ -307,17 +307,7 @@ export async function POST(req: NextRequest) {
               },
               {
                 role: 'user',
-                content: [
-                  ...toolResults.map(tr => ({
-                    type: 'tool_result' as const,
-                    tool_use_id: tr.tool_use_id,
-                    content: tr.content
-                  })),
-                  {
-                    type: 'text' as const,
-                    text: 'Please interpret these results and answer my original question.'
-                  }
-                ]
+                content: toolResults
               }
             ],
             stream: true,
@@ -403,12 +393,10 @@ export async function POST(req: NextRequest) {
           
           console.log('Follow-up stream completed');
           
-          // If we completed the follow-up stream but no text was sent, send a default response
+          // If we completed the follow-up stream but no tool calls were made
           if (followUpToolCalls.length === 0 || !followUpToolCalls.some(tc => tc.result)) {
-            console.log('No tool results from follow-up stream, sending default response');
-            sendEvent('text', { 
-              content: "I need more information to help with your query. Could you please be more specific about what you'd like to know?" 
-            });
+            console.log('No tool results from follow-up stream, stream should have provided text response');
+            // Don't send a default response - let Claude's response stand
           }
           
           // Handle multiple tool calls with recursive processing
