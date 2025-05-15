@@ -32,7 +32,8 @@ export function registerTools(server: McpServer) {
             }
             
             // Make optional if not required
-            const required = tool.inputSchema.required as string[] | undefined;
+            const inputSchema = tool.inputSchema as any;
+            const required = inputSchema.required as string[] | undefined;
             if (!required?.includes(key)) {
                 schema[key] = schema[key].optional();
             }

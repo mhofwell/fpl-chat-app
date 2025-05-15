@@ -92,7 +92,8 @@ export const fplMVPTools = {
           type: 'number',
           description: 'Maximum number of results (default: 10)'
         }
-      }
+      },
+      required: []
     },
     handler: mvpHandlers.searchPlayers
   }
