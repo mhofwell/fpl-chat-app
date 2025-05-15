@@ -5,7 +5,12 @@ import { ToolDefinition } from '@/app/types/tool-types';
 export const fplMVPToolsForClaude: ToolDefinition[] = [
   {
     name: 'fpl_get_league_leaders',
-    description: 'Returns rankings of Premier League players based on real match statistics (goals, assists, cards, clean sheets, saves, minutes). This tool focuses on actual match performance data.',
+    description: `Get Premier League player rankings by real match statistics. Returns:
+- Player name, team, and position
+- Statistic value (e.g., goals scored)
+- Games played and per-game average
+- Current form rating
+Format: "1. Mohamed Salah (LIV) - 28 goals in 36 games (0.78 per game) - Form: 3.8"`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -34,7 +39,11 @@ export const fplMVPToolsForClaude: ToolDefinition[] = [
   
   {
     name: 'fpl_get_player_stats',
-    description: 'Returns comprehensive data for a specific player including both real match statistics (goals, assists, cards) and FPL fantasy data (points, form, ownership). Use this for detailed player analysis.',
+    description: `Get comprehensive stats for a specific player. Returns:
+CurrentSeason: goals, assists, minutes, clean sheets, cards
+FPLData: total points, current price, ownership %, form rating
+Availability: injury status and news
+Format: Human-readable text with structured sections`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -58,7 +67,12 @@ export const fplMVPToolsForClaude: ToolDefinition[] = [
   
   {
     name: 'fpl_search_players',
-    description: 'Search and filter Premier League players by various criteria. Can sort by real statistics (goals, assists) or FPL metrics (points, form, price). Returns both real and fantasy data for each player.',
+    description: `Search and filter players by various criteria. Returns:
+- Player name, team, position
+- Real stats: goals, assists, minutes played
+- FPL data: points, price (£m), ownership %, form
+Format: List of players with both real and fantasy data
+Example: "Mohamed Salah - Liverpool FWD - Goals: 28, Points: 303, Price: £12.8"`,
     input_schema: {
       type: 'object' as const,
       properties: {

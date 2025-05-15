@@ -22,6 +22,74 @@ const anthropic = new Anthropic({
 
 export const runtime = 'nodejs';
 
+// Helper function to determine tool choice based on message context
+function determineToolChoice(message: string, context?: any) {
+  const lowerMessage = message.toLowerCase();
+  
+  // Force tool use for specific patterns
+  if (lowerMessage.includes('who is') || 
+      lowerMessage.includes('top scorer') ||
+      lowerMessage.includes('how many') ||
+      lowerMessage.includes('player stats') ||
+      lowerMessage.includes('fpl points')) {
+    return { type: 'any' as const }; // Force tool use
+  }
+  
+  // Never use tools for general chat
+  if (lowerMessage.includes('hello') || 
+      lowerMessage.includes('thanks') ||
+      lowerMessage.includes('goodbye')) {
+    return { type: 'none' as const }; // No tools
+  }
+  
+  // Auto for everything else
+  return { type: 'auto' as const };
+}
+
+// Helper function to execute tool with retry logic
+async function executeToolWithRetry(
+  toolName: string,
+  toolInput: any,
+  sessionId: string,
+  maxRetries: number = 3,
+  retryDelay: number = 1000
+) {
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await callMcpTool(toolName, toolInput, sessionId);
+      if (result.success) {
+        return result;
+      }
+      
+      // If it's a client error (bad input), don't retry
+      if (result.error?.includes('required') || result.error?.includes('invalid')) {
+        return result;
+      }
+      
+      lastError = result.error;
+      console.log(`Tool ${toolName} failed (attempt ${attempt}/${maxRetries}):`, lastError);
+      
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+      }
+    } catch (error) {
+      lastError = error;
+      console.error(`Tool ${toolName} error (attempt ${attempt}/${maxRetries}):`, error);
+      
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+      }
+    }
+  }
+  
+  return {
+    success: false,
+    error: `Failed after ${maxRetries} attempts: ${lastError}`
+  };
+}
+
 export async function POST(req: NextRequest) {
   console.log('Stream route: Received POST request');
   
@@ -146,7 +214,7 @@ export async function POST(req: NextRequest) {
           system: CLAUDE_SYSTEM_PROMPT,
           messages: [...contextMessages, { role: 'user', content: message }],
           tools: shouldUseToolsForQuery ? toolsForClaude : [],
-          tool_choice: { type: 'auto' },
+          tool_choice: shouldUseToolsForQuery ? determineToolChoice(message, context) : { type: 'none' },
           stream: true,
         });
 
@@ -198,9 +266,9 @@ export async function POST(req: NextRequest) {
                 console.log('Parsed tool input:', toolCall.input);
                 sendEvent('tool-processing', { name: toolCall.name });
                 
-                // Execute the tool and store result
+                // Execute the tool with retry logic
                 const toolStartTime = Date.now();
-                const result = await callMcpTool(toolCall.name, toolCall.input, validSessionId);
+                const result = await executeToolWithRetry(toolCall.name, toolCall.input, validSessionId);
                 const toolExecutionTime = Date.now() - toolStartTime;
                 
                 // Record tool metrics
@@ -264,13 +332,14 @@ export async function POST(req: NextRequest) {
               } else if (result.success) {
                 contentString = JSON.stringify(result.result);
               } else {
-                contentString = `Error: ${result.error}`;
+                contentString = result.error || 'Unknown error occurred';
               }
               
               return {
                 type: 'tool_result' as const,
                 tool_use_id: toolCall.id,
-                content: contentString
+                content: contentString,
+                is_error: !result.success
               };
             });
           
@@ -326,7 +395,7 @@ export async function POST(req: NextRequest) {
               }
             ],
             tools: toolsForClaude,
-            tool_choice: { type: 'auto' },
+            tool_choice: determineToolChoice(message, context),
             stream: true,
           });
           
@@ -380,7 +449,7 @@ export async function POST(req: NextRequest) {
                   sendEvent('tool-processing', { name: toolCall.name });
                   
                   // Execute the tool and store result
-                  const result = await callMcpTool(toolCall.name, toolCall.input, validSessionId);
+                  const result = await executeToolWithRetry(toolCall.name, toolCall.input, validSessionId);
                   toolCall.result = result; // Store for later use
                   console.log('Follow-up stream - Tool execution result:', result.success ? 'success' : 'error');
                   
@@ -447,13 +516,14 @@ export async function POST(req: NextRequest) {
               } else if (result.success) {
                 contentString = JSON.stringify(result.result);
               } else {
-                contentString = `Error: ${result.error}`;
+                contentString = result.error || 'Unknown error occurred';
               }
               
               return {
                 type: 'tool_result' as const,
                 tool_use_id: toolCall.id,
-                content: contentString
+                content: contentString,
+                is_error: !result.success
               };
             });
             
@@ -482,7 +552,7 @@ export async function POST(req: NextRequest) {
                 }
               ],
               tools: toolsForClaude,
-              tool_choice: { type: 'auto' },
+              tool_choice: determineToolChoice(message, context),
               stream: true,
             });
             
@@ -528,7 +598,7 @@ export async function POST(req: NextRequest) {
                     toolCall.input = JSON.parse(toolCall.inputJson);
                     sendEvent('tool-processing', { name: toolCall.name });
                     
-                    const result = await callMcpTool(toolCall.name, toolCall.input, validSessionId);
+                    const result = await executeToolWithRetry(toolCall.name, toolCall.input, validSessionId);
                     toolCall.result = result;
                     
                     if (result.success) {
