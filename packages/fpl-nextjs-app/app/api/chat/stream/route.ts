@@ -22,6 +22,16 @@ const anthropic = new Anthropic({
 
 export const runtime = 'nodejs';
 
+// Helper function to get user-friendly tool display names
+function getToolDisplayName(toolName: string): string {
+  const displayNames: Record<string, string> = {
+    'fpl_get_league_leaders': 'League Leaders',
+    'fpl_get_player_stats': 'Player Statistics',
+    'fpl_search_players': 'Player Search'
+  };
+  return displayNames[toolName] || toolName;
+}
+
 // Helper function to determine tool choice based on message context
 function determineToolChoice(message: string, context?: any) {
   const lowerMessage = message.toLowerCase();
@@ -233,7 +243,9 @@ export async function POST(req: NextRequest) {
               currentBlockId = chunk.content_block.id;
               sendEvent('tool-start', { 
                 name: chunk.content_block.name,
-                id: chunk.content_block.id
+                id: chunk.content_block.id,
+                displayName: getToolDisplayName(chunk.content_block.name),
+                status: 'initializing'
               });
               toolCalls.push({
                 id: chunk.content_block.id,
@@ -264,7 +276,12 @@ export async function POST(req: NextRequest) {
               try {
                 toolCall.input = JSON.parse(toolCall.inputJson);
                 console.log('Parsed tool input:', toolCall.input);
-                sendEvent('tool-processing', { name: toolCall.name });
+                sendEvent('tool-processing', { 
+                  name: toolCall.name,
+                  displayName: getToolDisplayName(toolCall.name),
+                  status: 'executing',
+                  message: 'Fetching data from FPL API...'
+                });
                 
                 // Execute the tool with retry logic
                 const toolStartTime = Date.now();
@@ -281,12 +298,18 @@ export async function POST(req: NextRequest) {
                 if (result.success) {
                   sendEvent('tool-result', { 
                     name: toolCall.name,
-                    result: result.result 
+                    displayName: getToolDisplayName(toolCall.name),
+                    status: 'completed',
+                    result: result.result,
+                    executionTime: toolExecutionTime
                   });
                 } else {
                   sendEvent('tool-error', { 
                     name: toolCall.name,
-                    error: result.error 
+                    displayName: getToolDisplayName(toolCall.name),
+                    status: 'failed',
+                    error: result.error,
+                    executionTime: toolExecutionTime
                   });
                   await Metrics.recordError('tool_execution', toolCall.name);
                 }
@@ -294,7 +317,10 @@ export async function POST(req: NextRequest) {
                 console.error('Error parsing tool input:', error);
                 sendEvent('tool-error', { 
                   name: toolCall.name,
-                  error: 'Failed to parse tool input' 
+                  displayName: getToolDisplayName(toolCall.name),
+                  status: 'error',
+                  error: 'Failed to parse tool input',
+                  details: error instanceof Error ? error.message : 'Unknown error'
                 });
               }
             } else {
@@ -446,7 +472,12 @@ export async function POST(req: NextRequest) {
                 try {
                   toolCall.input = JSON.parse(toolCall.inputJson);
                   console.log('Follow-up stream - Parsed tool input:', toolCall.input);
-                  sendEvent('tool-processing', { name: toolCall.name });
+                  sendEvent('tool-processing', { 
+                    name: toolCall.name,
+                    displayName: getToolDisplayName(toolCall.name),
+                    status: 'executing',
+                    message: 'Processing follow-up request...'
+                  });
                   
                   // Execute the tool and store result
                   const result = await executeToolWithRetry(toolCall.name, toolCall.input, validSessionId);
@@ -456,11 +487,15 @@ export async function POST(req: NextRequest) {
                   if (result.success) {
                     sendEvent('tool-result', { 
                       name: toolCall.name,
+                      displayName: getToolDisplayName(toolCall.name),
+                      status: 'completed',
                       result: result.result 
                     });
                   } else {
                     sendEvent('tool-error', { 
                       name: toolCall.name,
+                      displayName: getToolDisplayName(toolCall.name),
+                      status: 'failed',
                       error: result.error 
                     });
                   }
@@ -468,7 +503,10 @@ export async function POST(req: NextRequest) {
                   console.error('Follow-up stream - Error parsing tool input:', error);
                   sendEvent('tool-error', { 
                     name: toolCall.name,
-                    error: 'Failed to parse tool input' 
+                    displayName: getToolDisplayName(toolCall.name),
+                    status: 'error',
+                    error: 'Failed to parse tool input',
+                    details: error instanceof Error ? error.message : 'Unknown error'
                   });
                 }
               }
@@ -572,7 +610,9 @@ export async function POST(req: NextRequest) {
                   currentBlockId = chunk.content_block.id;
                   sendEvent('tool-start', { 
                     name: chunk.content_block.name,
-                    id: chunk.content_block.id
+                    id: chunk.content_block.id,
+                    displayName: getToolDisplayName(chunk.content_block.name),
+                    status: 'initializing'
                   });
                   newToolCalls.push({
                     id: chunk.content_block.id,
@@ -596,7 +636,12 @@ export async function POST(req: NextRequest) {
                 if (toolCall && toolCall.inputJson) {
                   try {
                     toolCall.input = JSON.parse(toolCall.inputJson);
-                    sendEvent('tool-processing', { name: toolCall.name });
+                    sendEvent('tool-processing', { 
+                    name: toolCall.name,
+                    displayName: getToolDisplayName(toolCall.name),
+                    status: 'executing',
+                    message: 'Processing follow-up request...'
+                  });
                     
                     const result = await executeToolWithRetry(toolCall.name, toolCall.input, validSessionId);
                     toolCall.result = result;
