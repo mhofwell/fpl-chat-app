@@ -3,19 +3,67 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { initializeMcpSession } from '@/app/actions/mcp-tools';
-import { Loader2, Send, PlusCircle } from 'lucide-react';
+import { Loader2, Send, PlusCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+
+interface ToolExecution {
+    name: string;
+    displayName?: string;
+    status: 'pending' | 'complete' | 'error';
+    message?: string;
+    executionTime?: number;
+    startedAt?: number;
+}
 
 interface Message {
     role: 'user' | 'assistant';
     content: string;
     isStreaming?: boolean;
-    usingTool?: {
-        name: string;
-        status: 'pending' | 'complete' | 'error';
-    };
+    usingTool?: ToolExecution;
+    toolExecutions?: ToolExecution[];
 }
+
+// Tool execution timeline component
+const ToolExecutionTimeline: React.FC<{ executions: ToolExecution[] }> = ({ executions }) => {
+    if (executions.length === 0) return null;
+    
+    return (
+        <div className="mb-3 p-2 bg-muted/50 rounded-md">
+            <div className="text-xs font-medium mb-2">Tool Executions:</div>
+            <div className="space-y-1">
+                {executions.map((execution, index) => (
+                    <div key={index} className="flex items-center gap-2 text-xs">
+                        <div className="flex items-center">
+                            {execution.status === 'pending' && (
+                                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                            )}
+                            {execution.status === 'complete' && (
+                                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                            )}
+                            {execution.status === 'error' && (
+                                <XCircle className="h-3 w-3 text-red-500" />
+                            )}
+                        </div>
+                        <span className="flex-1">
+                            {execution.displayName || execution.name}
+                            {execution.executionTime && (
+                                <span className="ml-1 text-muted-foreground">
+                                    ({(execution.executionTime / 1000).toFixed(1)}s)
+                                </span>
+                            )}
+                        </span>
+                        {execution.message && (
+                            <span className="text-muted-foreground truncate max-w-[200px]">
+                                {execution.message}
+                            </span>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 // Sample questions to help users get started
 const SAMPLE_QUESTIONS = [
@@ -212,9 +260,21 @@ export default function ChatUI() {
                                             setMessages((prev) => {
                                                 const newMessages = [...prev];
                                                 if (newMessages[assistantMessageIndex]) {
+                                                    const toolExecution: ToolExecution = {
+                                                        name: parsed.name,
+                                                        displayName: parsed.displayName,
+                                                        status: parsed.status || 'pending',
+                                                        message: parsed.message,
+                                                        startedAt: Date.now()
+                                                    };
+                                                    
                                                     newMessages[assistantMessageIndex] = {
                                                         ...newMessages[assistantMessageIndex],
-                                                        usingTool: { name: parsed.name, status: 'pending' },
+                                                        usingTool: toolExecution,
+                                                        toolExecutions: [
+                                                            ...(newMessages[assistantMessageIndex].toolExecutions || []),
+                                                            toolExecution
+                                                        ]
                                                     };
                                                 }
                                                 return newMessages;
@@ -225,10 +285,61 @@ export default function ChatUI() {
                                             setMessages((prev) => {
                                                 const newMessages = [...prev];
                                                 if (newMessages[assistantMessageIndex]) {
+                                                    const existingTool = newMessages[assistantMessageIndex].usingTool;
+                                                    const updatedTool: ToolExecution = {
+                                                        name: parsed.name,
+                                                        displayName: parsed.displayName || existingTool?.displayName,
+                                                        status: parsed.status || 'complete',
+                                                        message: parsed.message,
+                                                        executionTime: parsed.executionTime
+                                                    };
+                                                    
+                                                    // Update the current tool
                                                     newMessages[assistantMessageIndex] = {
                                                         ...newMessages[assistantMessageIndex],
-                                                        usingTool: { name: parsed.name, status: 'complete' },
+                                                        usingTool: updatedTool
                                                     };
+                                                    
+                                                    // Update in the executions array
+                                                    if (newMessages[assistantMessageIndex].toolExecutions) {
+                                                        const executions = newMessages[assistantMessageIndex].toolExecutions;
+                                                        const toolIndex = executions.findIndex(t => t.name === parsed.name && t.status === 'pending');
+                                                        if (toolIndex !== -1) {
+                                                            executions[toolIndex] = updatedTool;
+                                                        }
+                                                    }
+                                                }
+                                                return newMessages;
+                                            });
+                                            break;
+
+                                        case 'tool-error':
+                                            setMessages((prev) => {
+                                                const newMessages = [...prev];
+                                                if (newMessages[assistantMessageIndex]) {
+                                                    const existingTool = newMessages[assistantMessageIndex].usingTool;
+                                                    const errorTool: ToolExecution = {
+                                                        name: parsed.name || existingTool?.name || 'unknown',
+                                                        displayName: parsed.displayName || existingTool?.displayName,
+                                                        status: 'error',
+                                                        message: parsed.userFriendlyError || parsed.error || 'Tool failed',
+                                                        executionTime: parsed.executionTime
+                                                    };
+                                                    
+                                                    // Update the current tool
+                                                    newMessages[assistantMessageIndex] = {
+                                                        ...newMessages[assistantMessageIndex],
+                                                        usingTool: errorTool
+                                                    };
+                                                    
+                                                    // Update in the executions array
+                                                    if (newMessages[assistantMessageIndex].toolExecutions) {
+                                                        const executions = newMessages[assistantMessageIndex].toolExecutions;
+                                                        const toolIndex = executions.findIndex(t => t.name === parsed.name && t.status === 'pending');
+                                                        if (toolIndex !== -1) {
+                                                            executions[toolIndex] = errorTool;
+                                                        }
+                                                    }
                                                 }
                                                 return newMessages;
                                             });
@@ -334,6 +445,16 @@ export default function ChatUI() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Global loading state */}
+                {isProcessing && messages.length > 0 && (
+                    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm p-2 mb-2 rounded-md border shadow-sm">
+                        <div className="flex items-center gap-2 text-sm">
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            <span className="text-muted-foreground">Processing your request...</span>
+                        </div>
+                    </div>
+                )}
+                
                 {messages.length === 0 && !isInitializing && (
                     <div className="text-center space-y-6 mt-8">
                         <p className="text-muted-foreground">
@@ -370,9 +491,14 @@ export default function ChatUI() {
                                     : 'bg-muted'
                             }`}
                         >
-                            {/* Tool usage indicator */}
-                            {message.usingTool && (
-                                <div className="mb-2">
+                            {/* Tool execution timeline for multiple tools */}
+                            {message.toolExecutions && message.toolExecutions.length > 1 && (
+                                <ToolExecutionTimeline executions={message.toolExecutions} />
+                            )}
+                            
+                            {/* Single tool usage indicator */}
+                            {message.usingTool && (!message.toolExecutions || message.toolExecutions.length <= 1) && (
+                                <div className="mb-2 space-y-1">
                                     <Badge
                                         variant={
                                             message.usingTool.status === 'complete'
@@ -386,8 +512,24 @@ export default function ChatUI() {
                                         {message.usingTool.status === 'pending' && (
                                             <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                                         )}
-                                        Using: {message.usingTool.name}
+                                        {message.usingTool.status === 'complete' && (
+                                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                                        )}
+                                        {message.usingTool.status === 'error' && (
+                                            <XCircle className="h-3 w-3 mr-1" />
+                                        )}
+                                        {message.usingTool.displayName || message.usingTool.name}
+                                        {message.usingTool.executionTime && (
+                                            <span className="ml-1 opacity-70">
+                                                ({(message.usingTool.executionTime / 1000).toFixed(1)}s)
+                                            </span>
+                                        )}
                                     </Badge>
+                                    {message.usingTool.message && (
+                                        <p className="text-xs text-muted-foreground pl-2">
+                                            {message.usingTool.message}
+                                        </p>
+                                    )}
                                 </div>
                             )}
                             
