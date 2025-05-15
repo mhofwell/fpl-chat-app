@@ -141,11 +141,23 @@ export async function POST(req: NextRequest) {
 KEY DISTINCTIONS TO ALWAYS REMEMBER:
 
 PLAYERS:
-- "Top scorer" = player with most ACTUAL goals in Premier League (use goals_scored field)
+- "Top scorer" = player with most ACTUAL goals in Premier League (use goals_scored field from fixtures, NOT total_points)
 - "Most assists" = player with most ACTUAL assists (use assists field)
 - "Best player in FPL" = player with most FPL points (use total_points field)
 - "Goals" always means real Premier League goals unless specifically asked about FPL
 - Clean sheets, saves, penalties are ACTUAL match events, not just FPL metrics
+
+IMPORTANT: When user asks about "top scorer" or "most goals", you MUST:
+1. Look for actual goals scored data in fixtures or player stats
+2. If only FPL points are available, explain this limitation and suggest using fixture data
+3. NEVER confuse FPL points with actual goals scored
+
+TOOL RESULTS INTERPRETATION:
+When you receive tool results, ALWAYS provide a complete answer to the user's question by:
+1. Analyzing the data returned
+2. Directly answering the original question
+3. Clarifying any limitations in the data (e.g., "These are FPL points, not actual goals")
+4. Suggesting alternative queries if needed
 
 TEAMS:
 - "League position/table" = actual Premier League standings (use position field if available)
@@ -375,11 +387,17 @@ AVAILABLE TOOLS:
               },
               {
                 role: 'user',
-                content: toolResults.map(tr => ({
-                  type: 'tool_result' as const,
-                  tool_use_id: tr.tool_use_id,
-                  content: tr.content
-                }))
+                content: [
+                  ...toolResults.map(tr => ({
+                    type: 'tool_result' as const,
+                    tool_use_id: tr.tool_use_id,
+                    content: tr.content
+                  })),
+                  {
+                    type: 'text' as const,
+                    text: 'Please interpret these results and answer my original question.'
+                  }
+                ]
               }
             ],
             stream: true,

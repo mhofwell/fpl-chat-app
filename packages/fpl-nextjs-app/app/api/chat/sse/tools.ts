@@ -87,7 +87,7 @@ export const toolsForClaude: ToolDefinition[] = [
   },
   {
     name: 'search-players',
-    description: 'Searches for FPL players based on various criteria like name, team, position, price, points, and allows sorting.',
+    description: 'Searches for FPL players based on various criteria. Can sort by actual goals scored (use goals_desc) or FPL points. Use this for "top scorer" queries with sortBy="goals_desc".',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -116,10 +116,14 @@ export const toolsForClaude: ToolDefinition[] = [
           type: 'integer',
           description: 'Optional: Minimum total points.'
         },
+        minGoals: {
+          type: 'integer',
+          description: 'Optional: Minimum actual goals scored.'
+        },
         sortBy: {
           type: 'string',
-          enum: ['total_points_desc', 'now_cost_asc', 'now_cost_desc', 'form_desc', 'selected_by_percent_desc', 'price_rise_desc', 'price_rise_asc'],
-          description: "Optional: Stat to sort players by and direction. Defaults to 'total_points_desc'."
+          enum: ['total_points_desc', 'now_cost_asc', 'now_cost_desc', 'form_desc', 'selected_by_percent_desc', 'price_rise_desc', 'price_rise_asc', 'goals_desc'],
+          description: "Optional: Stat to sort players by. Use 'goals_desc' for actual goal scorers, 'total_points_desc' for FPL points. Defaults to 'total_points_desc'."
         },
         limit: {
           type: 'integer',

@@ -10,7 +10,8 @@ interface SearchPlayersParams {
     minPrice?: number;
     maxPrice?: number;
     minTotalPoints?: number;
-    sortBy?: 'total_points_desc' | 'now_cost_asc' | 'now_cost_desc' | 'form_desc' | 'selected_by_percent_desc' | 'price_rise_desc' | 'price_rise_asc' | 'recent_form_desc' | 'last_season_points_desc';
+    minGoals?: number;
+    sortBy?: 'total_points_desc' | 'now_cost_asc' | 'now_cost_desc' | 'form_desc' | 'selected_by_percent_desc' | 'price_rise_desc' | 'price_rise_asc' | 'recent_form_desc' | 'last_season_points_desc' | 'goals_desc';
     limit?: number;
     includeRawData?: boolean;
 }
@@ -35,6 +36,7 @@ export async function searchPlayers(
         minPrice,
         maxPrice,
         minTotalPoints,
+        minGoals,
         sortBy = 'total_points_desc',
         limit = 10,
         includeRawData = false,
@@ -129,6 +131,9 @@ export async function searchPlayers(
             if (minTotalPoints !== undefined && (player.total_points === undefined || player.total_points < minTotalPoints)) {
                 return false;
             }
+            if (minGoals !== undefined && (player.goals_scored === undefined || player.goals_scored < minGoals)) {
+                return false;
+            }
             return true;
         });
 
@@ -171,6 +176,8 @@ export async function searchPlayers(
                         return bLastSeason - aLastSeason;
                     }
                     return 0; // No enriched data, no sorting
+                case 'goals_desc':
+                    return (bVal(b.goals_scored) - aVal(a.goals_scored));
                 case 'total_points_desc':
                 default:
                     return (bVal(b.total_points) - aVal(a.total_points));
@@ -204,6 +211,8 @@ export async function searchPlayers(
             responseText += `Price: £${player.now_cost !== undefined ? (player.now_cost / 10).toFixed(1) : 'N/A'}m\n`;
             responseText += `Form: ${player.form || 'N/A'}\n`;
             responseText += `Total Points: ${player.total_points !== undefined ? player.total_points : 'N/A'}\n`;
+            responseText += `Goals Scored: ${player.goals_scored !== undefined ? player.goals_scored : 'N/A'}\n`;
+            responseText += `Assists: ${player.assists !== undefined ? player.assists : 'N/A'}\n`;
             responseText += `Selected By: ${player.selected_by_percent || 'N/A'}%\n`;
             const playerStatus = player.status || '';
             responseText += `Status: ${statusMap[playerStatus] || playerStatus || 'N/A'}\n`;
