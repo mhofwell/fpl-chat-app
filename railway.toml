@@ -1,0 +1,29 @@
+# railway.toml
+
+[deploy]
+startCommand = "npm start"
+
+[cron]
+# Update every 15 minutes during typical match times (weekends)
+matchday_update = {
+  schedule = "*/15 * * * 6,0",  # Every 15 min on Sat/Sun
+  endpoint = "/api/cron/fpl-update?type=live",
+  method = "GET",
+  headers = { Authorization = "Bearer $CRON_SECRET" }
+}
+
+# Update every hour during weekdays
+regular_update = {
+  schedule = "0 * * * 1-5",  # Every hour Mon-Fri
+  endpoint = "/api/cron/fpl-update?type=regular",
+  method = "GET",
+  headers = { Authorization = "Bearer $CRON_SECRET" }
+}
+
+# Full update daily at 2 AM
+daily_update = {
+  schedule = "0 2 * * *",  # 2 AM daily
+  endpoint = "/api/cron/fpl-update?type=full",
+  method = "GET",
+  headers = { Authorization = "Bearer $CRON_SECRET" }
+}

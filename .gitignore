@@ -49,3 +49,6 @@ logs
 # Cursor editor configuration
 .cursor/
 **/.claude/settings.local.json
+
+# Planning and documentation folders
+/tool-update-plan
