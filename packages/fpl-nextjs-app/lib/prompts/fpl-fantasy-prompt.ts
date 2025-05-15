@@ -17,13 +17,21 @@ ALSO INCLUDE (for context):
 - clean_sheets = Important for defender/GK fantasy points
 - All real stats that influence fantasy scoring
 
-TOOL USAGE FOR FANTASY:
-1. "best FPL player" or "most points" → Use fpl_search_players with sortBy='points'
-2. "good value" → Use fpl_search_players with sortBy='price' or consider points per million
-3. "player's fantasy points" → Use fpl_get_player_stats (focus on fplData section)
-4. "[Player name]'s fantasy points" → Use fpl_get_player_stats with playerName
-5. "[Player name]'s FPL points" → Use fpl_get_player_stats with playerName
-6. "FPL differentials" → Use fpl_search_players with low selected_by_percent
+CRITICAL TOOL USAGE RULES:
+NEVER use fpl_get_league_leaders for FPL fantasy queries - that shows real goals!
+
+CORRECT TOOL USAGE FOR FANTASY:
+1. "How is [Player] doing in FPL points" → Use fpl_get_player_stats with playerName
+2. "[Player name]'s fantasy points" → Use fpl_get_player_stats with playerName
+3. "[Player name]'s FPL points" → Use fpl_get_player_stats with playerName
+4. "best FPL player" or "most FPL points" → Use fpl_search_players with sortBy='points'
+5. "FPL performance" → Use fpl_get_player_stats for individual or fpl_search_players for rankings
+6. "good value" → Use fpl_search_players with sortBy='price' or consider points per million
+7. "FPL differentials" → Use fpl_search_players with low selected_by_percent
+
+WRONG TOOL USAGE (NEVER DO THIS):
+- DO NOT use fpl_get_league_leaders with category='goals' for FPL queries
+- DO NOT use category='assists' for FPL assists (use fpl_search_players sortBy='points')
 
 EXAMPLE INTERPRETATIONS:
 - "Best player" = Player with most FPL points

@@ -13,7 +13,7 @@ import { toolsForClaude } from './tools';
 import { TextBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources';
 import { Metrics } from '@/utils/monitoring/metrics';
 import { needsSummarization, compressConversation } from '@/utils/claude/conversation-summarizer';
-import { detectQueryIntent, PROMPT_REGISTRY } from '@/lib/prompts';
+import { claudeNativeSystemPrompt } from '@/lib/prompts/claude-native-prompt';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -136,10 +136,9 @@ export async function POST(req: NextRequest) {
         // Record message metrics
         await Metrics.recordChatMessage('user', userMessage.tokenCount || 0);
 
-        // Detect query intent and select appropriate prompt
-        const queryIntent = detectQueryIntent(message);
-        const CLAUDE_SYSTEM_PROMPT = PROMPT_REGISTRY[queryIntent];
-        console.log(`Using prompt for intent: ${queryIntent}`);
+        // Use our Claude-native prompt
+        const CLAUDE_SYSTEM_PROMPT = claudeNativeSystemPrompt.prompt;
+        console.log('Using Claude-native prompt');
         
         const stream = await anthropic.messages.create({
           model: CLAUDE_CONFIG.MODEL_VERSION,
@@ -403,6 +402,14 @@ export async function POST(req: NextRequest) {
           }
           
           console.log('Follow-up stream completed');
+          
+          // If we completed the follow-up stream but no text was sent, send a default response
+          if (followUpToolCalls.length === 0 || !followUpToolCalls.some(tc => tc.result)) {
+            console.log('No tool results from follow-up stream, sending default response');
+            sendEvent('text', { 
+              content: "I need more information to help with your query. Could you please be more specific about what you'd like to know?" 
+            });
+          }
           
           // Handle multiple tool calls with recursive processing
           const processFollowUpToolCalls = async function(

@@ -5,14 +5,14 @@ import { ToolDefinition } from '@/app/types/tool-types';
 export const fplMVPToolsForClaude: ToolDefinition[] = [
   {
     name: 'fpl_get_league_leaders',
-    description: 'Get top players by REAL Premier League statistics (goals, assists, cards, etc.). Use this for "top scorer", "most goals", "most assists" queries.',
+    description: 'Returns rankings of Premier League players based on real match statistics (goals, assists, cards, clean sheets, saves, minutes). This tool focuses on actual match performance data.',
     input_schema: {
       type: 'object' as const,
       properties: {
         category: {
           type: 'string',
           enum: ['goals', 'assists', 'cards', 'clean_sheets', 'saves', 'minutes'],
-          description: 'The real statistic to rank players by. Use "goals" for top scorers.'
+          description: 'The statistic to rank players by'
         },
         position: {
           type: 'string',
@@ -34,7 +34,7 @@ export const fplMVPToolsForClaude: ToolDefinition[] = [
   
   {
     name: 'fpl_get_player_stats',
-    description: 'Get detailed statistics for a specific player including REAL STATS (goals, assists) and FPL data (fantasy points, price).',
+    description: 'Returns comprehensive data for a specific player including both real match statistics (goals, assists, cards) and FPL fantasy data (points, form, ownership). Use this for detailed player analysis.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -58,7 +58,7 @@ export const fplMVPToolsForClaude: ToolDefinition[] = [
   
   {
     name: 'fpl_search_players',
-    description: 'Search for players based on various criteria. Use sortBy="goals" for real goals, sortBy="points" for FPL points.',
+    description: 'Search and filter Premier League players by various criteria. Can sort by real statistics (goals, assists) or FPL metrics (points, form, price). Returns both real and fantasy data for each player.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -73,11 +73,11 @@ export const fplMVPToolsForClaude: ToolDefinition[] = [
         },
         minGoals: {
           type: 'number',
-          description: 'Minimum REAL goals scored'
+          description: 'Minimum goals scored'
         },
         minAssists: {
           type: 'number',
-          description: 'Minimum REAL assists'
+          description: 'Minimum assists'
         },
         teamName: {
           type: 'string',
@@ -86,7 +86,7 @@ export const fplMVPToolsForClaude: ToolDefinition[] = [
         sortBy: {
           type: 'string',
           enum: ['goals', 'assists', 'points', 'form', 'price'],
-          description: 'Sort by: "goals" for real goals, "points" for FPL points'
+          description: 'Sort results by this criteria'
         },
         limit: {
           type: 'number',
