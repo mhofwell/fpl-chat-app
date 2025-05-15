@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { initializeMcpSession } from '@/app/actions/mcp-tools';
-import { Loader2, Send, PlusCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Send, PlusCircle, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SSEParser } from '@/utils/sse-parser';
@@ -89,6 +89,8 @@ export default function ChatUI() {
     const [mcpSessionId, setMcpSessionId] = useState<string | null>(null);
     const [isInitializing, setIsInitializing] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [retryCount, setRetryCount] = useState(0);
+    const [isRetrying, setIsRetrying] = useState(false);
     const [enableStreaming, setEnableStreaming] = useState<boolean>(() => 
         typeof window !== 'undefined' 
             ? localStorage.getItem('enable_streaming') !== 'false'
@@ -146,19 +148,26 @@ export default function ChatUI() {
         localStorage.setItem('enable_streaming', String(newValue));
     };
 
-    const handleSubmit = async (e: React.FormEvent, customMessage?: string) => {
+    const handleSubmit = async (e: React.FormEvent, customMessage?: string, isRetry = false) => {
         e.preventDefault();
         const messageToSend = customMessage || input;
         if (!messageToSend.trim() || isProcessing || isInitializing) return;
 
         // Clear any previous errors
         setError(null);
-
-        // Add user message to UI immediately
-        const userMessage: Message = { role: 'user', content: messageToSend };
-        setMessages((prev) => [...prev, userMessage]);
-        setInput('');
+        
+        if (!isRetry) {
+            // Add user message to UI immediately (only on first attempt)
+            const userMessage: Message = { role: 'user', content: messageToSend };
+            setMessages((prev) => [...prev, userMessage]);
+            setInput('');
+            setRetryCount(0);
+        } else {
+            setRetryCount(prev => prev + 1);
+        }
+        
         setIsProcessing(true);
+        setIsRetrying(isRetry);
 
         try {
             // Use EventSource with POST body for streaming
@@ -383,7 +392,7 @@ export default function ChatUI() {
                     
                     // Don't show error if stream was intentionally closed
                     if (!reader.closed) {
-                        setError('Connection lost. Please try again.');
+                        const streamError = error instanceof Error ? error.message : 'Unknown error';
                         
                         // Show partial response if available
                         if (currentContent) {
@@ -399,6 +408,18 @@ export default function ChatUI() {
                                 return newMessages;
                             });
                         }
+                        
+                        // Check if this is a recoverable error
+                        if (!isRetry && retryCount < 2 && 
+                            (streamError.includes('Connection lost') || 
+                             streamError.includes('Stream terminated'))) {
+                            setError(`Connection lost. Reconnecting... (${retryCount + 1}/2)`);
+                            setTimeout(() => {
+                                handleSubmit(e, messageToSend, true);
+                            }, 1500);
+                        } else {
+                            setError('Connection lost. Please try again.');
+                        }
                     }
                     
                     setIsProcessing(false);
@@ -412,16 +433,35 @@ export default function ChatUI() {
 
         } catch (error) {
             console.error('Error handling message:', error);
-            setError('Failed to process your message. Please try again.');
-            setIsProcessing(false);
+            const errorMessage = 'Failed to process your message.';
             
-            setMessages((prev) => [
-                ...prev,
-                {
-                    role: 'assistant',
-                    content: 'Sorry, there was an error processing your request. Please try again.',
-                },
-            ]);
+            // Determine if we should retry
+            const shouldRetry = !isRetry && retryCount < 3 && 
+                error instanceof Error && 
+                (error.message.includes('NetworkError') || 
+                 error.message.includes('TypeError: Failed to fetch') ||
+                 error.message.includes('Connection refused'));
+            
+            if (shouldRetry) {
+                setError(`${errorMessage} Retrying... (${retryCount + 1}/3)`);
+                setIsProcessing(false);
+                
+                // Retry after a short delay
+                setTimeout(() => {
+                    handleSubmit(e, messageToSend, true);
+                }, 1000 * (retryCount + 1));
+            } else {
+                setError(`${errorMessage} Please try again.`);
+                setIsProcessing(false);
+                
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        role: 'assistant',
+                        content: `Sorry, there was an error processing your request${retryCount > 0 ? ' after ' + retryCount + ' retries' : ''}. Please try again.`,
+                    },
+                ]);
+            }
         }
     };
 
@@ -463,14 +503,34 @@ export default function ChatUI() {
 
             {/* Error Display */}
             {error && (
-                <div className="mx-4 mt-4 p-3 bg-destructive/15 text-destructive text-sm rounded-md flex items-center justify-between">
-                    <span>{error}</span>
-                    <button
-                        onClick={() => setError(null)}
-                        className="text-destructive hover:text-destructive/80"
-                    >
-                        ×
-                    </button>
+                <div className="mx-4 mt-4 p-3 bg-destructive/15 text-sm rounded-md">
+                    <div className="flex items-center justify-between">
+                        <span className="text-destructive">{error}</span>
+                        <div className="flex items-center gap-2">
+                            {!isRetrying && error.includes('Please try again') && messages.length > 0 && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+                                        if (lastUserMessage) {
+                                            handleSubmit(new Event('submit') as any, lastUserMessage.content);
+                                        }
+                                    }}
+                                    disabled={isProcessing}
+                                >
+                                    <RefreshCw className="h-3 w-3 mr-1" />
+                                    Retry
+                                </Button>
+                            )}
+                            <button
+                                onClick={() => setError(null)}
+                                className="text-destructive hover:text-destructive/80"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
