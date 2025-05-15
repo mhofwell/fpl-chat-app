@@ -32,6 +32,51 @@ function getToolDisplayName(toolName: string): string {
   return displayNames[toolName] || toolName;
 }
 
+// Helper function to get user-friendly error messages
+function getUserFriendlyError(error: string | any, toolName: string): string {
+  // If error is an object with specific flags
+  if (typeof error === 'object' && error !== null) {
+    if (error.isTimeout) {
+      return 'The request took too long to complete. Please try again with a simpler query.';
+    }
+    if (error.isRateLimit) {
+      return 'I\'ve made too many requests recently. Please wait a moment and try again.';
+    }
+    error = error.error || error.toString();
+  }
+  
+  // Common error patterns and their user-friendly messages
+  const errorPatterns: Array<[RegExp, string]> = [
+    [/player not found/i, 'I couldn\'t find that player. Please check the spelling or try a different name.'],
+    [/required.*player/i, 'Please provide a player name to search for.'],
+    [/required.*category/i, 'Please specify what statistic you\'d like to see (goals, assists, etc.).'],
+    [/timeout|timed out/i, 'The request took too long. Please try again with a simpler query.'],
+    [/rate.*limit|too many requests/i, 'Too many requests. Please wait a moment before trying again.'],
+    [/network/i, 'I\'m having trouble connecting to the FPL data. Please try again in a moment.'],
+    [/invalid.*parameter/i, 'The request format wasn\'t quite right. Let me help you rephrase that.'],
+    [/no data/i, 'No data is available for that request right now.'],
+    [/server.*error/i, 'The FPL service is temporarily unavailable. Please try again later.'],
+    [/authentication/i, 'There was an issue accessing the FPL data. Please try again.'],
+    [/parse|parsing/i, 'I had trouble understanding the data format. Please try again.']
+  ];
+
+  // Check each pattern
+  for (const [pattern, friendlyMessage] of errorPatterns) {
+    if (pattern.test(error)) {
+      return friendlyMessage;
+    }
+  }
+
+  // Tool-specific fallback messages
+  const toolFallbacks: Record<string, string> = {
+    'fpl_get_league_leaders': 'I couldn\'t retrieve the league leaders. Please try again or ask for specific players instead.',
+    'fpl_get_player_stats': 'I couldn\'t get that player\'s statistics. Please check the player name and try again.',
+    'fpl_search_players': 'The player search didn\'t work as expected. Try searching with just the last name.'
+  };
+
+  return toolFallbacks[toolName] || 'I encountered an issue with that request. Please try rephrasing or asking something else.';
+}
+
 // Helper function to determine tool choice based on message context
 function determineToolChoice(message: string, context?: any) {
   const lowerMessage = message.toLowerCase();
@@ -56,21 +101,45 @@ function determineToolChoice(message: string, context?: any) {
   return { type: 'auto' as const };
 }
 
-// Helper function to execute tool with retry logic
+// Helper function to execute tool with retry logic and timeout
 async function executeToolWithRetry(
   toolName: string,
   toolInput: any,
   sessionId: string,
   maxRetries: number = 3,
-  retryDelay: number = 1000
+  retryDelay: number = 1000,
+  timeout: number = 30000 // 30 second timeout
 ) {
   let lastError: any = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const result = await callMcpTool(toolName, toolInput, sessionId);
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Tool execution timeout')), timeout);
+      });
+      
+      // Race between tool execution and timeout
+      const result = await Promise.race([
+        callMcpTool(toolName, toolInput, sessionId),
+        timeoutPromise
+      ]) as any;
+      
       if (result.success) {
         return result;
+      }
+      
+      // Check for rate limit errors
+      if (result.error?.toLowerCase().includes('rate limit') || 
+          result.error?.toLowerCase().includes('too many requests')) {
+        lastError = 'Rate limit exceeded';
+        // Exponential backoff for rate limits
+        if (attempt < maxRetries) {
+          const backoffDelay = Math.min(retryDelay * Math.pow(2, attempt), 30000);
+          console.log(`Rate limit hit for ${toolName}, waiting ${backoffDelay}ms before retry`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        }
+        continue;
       }
       
       // If it's a client error (bad input), don't retry
@@ -85,8 +154,14 @@ async function executeToolWithRetry(
         await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
       }
     } catch (error) {
-      lastError = error;
-      console.error(`Tool ${toolName} error (attempt ${attempt}/${maxRetries}):`, error);
+      // Handle timeout errors
+      if (error instanceof Error && error.message === 'Tool execution timeout') {
+        lastError = 'Tool execution timed out';
+        console.error(`Tool ${toolName} timeout (attempt ${attempt}/${maxRetries})`);
+      } else {
+        lastError = error;
+        console.error(`Tool ${toolName} error (attempt ${attempt}/${maxRetries}):`, error);
+      }
       
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
@@ -96,7 +171,10 @@ async function executeToolWithRetry(
   
   return {
     success: false,
-    error: `Failed after ${maxRetries} attempts: ${lastError}`
+    error: lastError,
+    isRetryFailure: true,
+    isTimeout: lastError === 'Tool execution timed out',
+    isRateLimit: lastError === 'Rate limit exceeded'
   };
 }
 
@@ -308,7 +386,8 @@ export async function POST(req: NextRequest) {
                     name: toolCall.name,
                     displayName: getToolDisplayName(toolCall.name),
                     status: 'failed',
-                    error: result.error,
+                    error: getUserFriendlyError(result, toolCall.name),
+                    technicalError: result.error,
                     executionTime: toolExecutionTime
                   });
                   await Metrics.recordError('tool_execution', toolCall.name);
@@ -319,7 +398,8 @@ export async function POST(req: NextRequest) {
                   name: toolCall.name,
                   displayName: getToolDisplayName(toolCall.name),
                   status: 'error',
-                  error: 'Failed to parse tool input',
+                  error: 'I had trouble understanding that request. Please try rephrasing it.',
+                  technicalError: 'Failed to parse tool input',
                   details: error instanceof Error ? error.message : 'Unknown error'
                 });
               }
@@ -358,7 +438,7 @@ export async function POST(req: NextRequest) {
               } else if (result.success) {
                 contentString = JSON.stringify(result.result);
               } else {
-                contentString = result.error || 'Unknown error occurred';
+                contentString = getUserFriendlyError(result, toolCall.name);
               }
               
               return {
@@ -496,7 +576,8 @@ export async function POST(req: NextRequest) {
                       name: toolCall.name,
                       displayName: getToolDisplayName(toolCall.name),
                       status: 'failed',
-                      error: result.error 
+                      error: getUserFriendlyError(result, toolCall.name),
+                      technicalError: result.error 
                     });
                   }
                 } catch (error) {
@@ -554,7 +635,7 @@ export async function POST(req: NextRequest) {
               } else if (result.success) {
                 contentString = JSON.stringify(result.result);
               } else {
-                contentString = result.error || 'Unknown error occurred';
+                contentString = getUserFriendlyError(result, toolCall.name);
               }
               
               return {
@@ -661,7 +742,10 @@ export async function POST(req: NextRequest) {
                     console.error('Error parsing tool input:', error);
                     sendEvent('tool-error', { 
                       name: toolCall.name,
-                      error: 'Failed to parse tool input' 
+                      displayName: getToolDisplayName(toolCall.name),
+                      status: 'error',
+                      error: 'I had trouble understanding that request. Please try rephrasing it.',
+                      technicalError: 'Failed to parse tool input'
                     });
                   }
                 }
