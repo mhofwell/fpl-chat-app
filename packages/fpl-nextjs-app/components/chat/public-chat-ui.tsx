@@ -458,7 +458,7 @@ export default function ChatUI() {
     };
 
     return (
-        <div className="flex flex-col h-[600px] w-full max-w-3xl mx-auto rounded-lg border bg-background shadow-sm">
+        <div className="flex flex-col h-[calc(100vh-6rem)] w-[95%] mx-auto rounded-lg border bg-background shadow-sm">
             {/* Header */}
             <div className="p-4 border-b flex justify-between items-center">
                 <div>
@@ -543,7 +543,7 @@ export default function ChatUI() {
                         <p className="text-muted-foreground">
                             Welcome! I can help you with Fantasy Premier League questions.
                         </p>
-                        <div className="grid gap-2 max-w-md mx-auto">
+                        <div className="grid gap-2 max-w-2xl mx-auto">
                             <p className="text-sm text-muted-foreground mb-2">
                                 Try asking something like:
                             </p>
@@ -568,7 +568,7 @@ export default function ChatUI() {
                         }`}
                     >
                         <div
-                            className={`relative max-w-[85%] px-4 py-2 rounded-lg ${
+                            className={`relative max-w-[90%] px-4 py-2 rounded-lg ${
                                 message.role === 'user'
                                     ? 'bg-primary text-primary-foreground'
                                     : 'bg-muted'
