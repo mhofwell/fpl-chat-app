@@ -86,13 +86,14 @@
 ### Phase 3: FPL Features & User Authentication
 **Timeline: 4-6 weeks**
 - [ ] User authentication (OAuth/Supabase)
-- [ ] Connect to user's FPL account
-- [ ] Team management features
-- [ ] Transfer recommendations
-- [ ] Captain/vice-captain suggestions
-- [ ] Mini-league tracking
+- [ ] Connect to user's FPL account (read-only access)
+- [ ] Team management features (view-only)
+- [ ] Transfer recommendations (advisory only)
+- [ ] Captain/vice-captain suggestions (advisory only)
+- [ ] Mini-league tracking (read-only)
 - [ ] Price change predictions
-- [ ] Wildcard/chips optimization
+- [ ] Wildcard/chips optimization (advisory strategies)
+- [ ] *Note: All team management features will be advisory only due to FPL API limitations*
 
 ### Phase 4: Predictive Analytics & ML
 **Timeline: 6-8 weeks**
@@ -104,17 +105,6 @@
 - [ ] Expected points modeling
 - [ ] Fixture difficulty analysis
 - [ ] Player comparison ML
-
-### Phase 5: Multi-League Support
-**Timeline: 8-10 weeks**
-- [ ] La Liga integration
-- [ ] Bundesliga support
-- [ ] Serie A addition
-- [ ] Ligue 1 coverage
-- [ ] Cross-league comparisons
-- [ ] Unified player database
-- [ ] Multi-language support
-- [ ] Global player search
 
 ## 📊 Success Metrics
 
@@ -156,7 +146,35 @@
 3. Add request/response logging
 4. Create admin dashboard
 5. Optimize database queries
-6. Add caching layers
+6. Reimplement Redis caching layer
+
+### Data Architecture Decisions
+
+We've determined that the FPL API will serve as the Single Source of Truth (SSOT) for Phases 1 and 2, with Redis caching to provide performance benefits:
+
+1. **Current Approach**: FPL API + Redis caching
+   - All current tools use read-only data from the FPL API
+   - Redis caching provides sufficient performance optimization
+   - Simpler architecture with fewer systems to maintain
+   - No data synchronization issues to manage
+
+2. **Database Introduction Timeline**:
+   - No database needed until Phase 3 (FPL Features & User Authentication)
+   - Database will be introduced specifically for:
+     - User authentication and profiles
+     - User-specific preferences and settings
+     - Persistent storage of user-generated content
+     - Historical data tracking beyond API capabilities
+   - **Important API Limitation**: The official FPL API is read-only and does not support write operations (transfers, team management, etc.). Phase 3 features will require:
+     - User authentication with the official FPL website
+     - Browser automation or unofficial methods for team management actions
+     - Secure credential storage in database
+
+3. **Redis Cache Strategy**:
+   - Dynamic TTL: 15-minute cache during live matches, 1-hour cache otherwise
+   - Proactive cache warming for frequently accessed data
+   - Automatic invalidation for data updates
+   - Monitoring for cache hit/miss rates
 
 ## 📝 Next Steps
 
@@ -170,7 +188,7 @@
    - [ ] Start Phase 2 (UI enhancements)
    - [ ] Add basic analytics
    - [ ] Improve error messages
-   - [ ] Optimize cache strategy
+   - [ ] Reimplement and optimize Redis caching layer
 
 3. **Medium Term** (Next Month)
    - [ ] Complete Phase 2
@@ -193,5 +211,5 @@
 
 ---
 
-Last Updated: November 2024
-Status: MVP Complete, Ready for Deployment
+Last Updated: May 2025
+Status: MVP Complete, Tool Refactoring Complete, Ready for Phase 2
