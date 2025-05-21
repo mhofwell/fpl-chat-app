@@ -6,15 +6,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { callMcpTool } from '@/app/actions/mcp-tools';
 import { getOrCreateValidSession } from '@/utils/claude/session-manager-redis';
 import { getChatContext, updateChatContext, formatContextForClaude, ChatMessage, getConversationMetrics } from '@/utils/claude/context-manager-redis';
-import { shouldUseTool } from '@/utils/claude/tool-strategy';
 import { applyRateLimit } from '@/utils/claude/rate-limiter-redis';
 import { CLAUDE_CONFIG } from '@/config/ai-config';
 import { toolsForClaude } from './tools';
-import { TextBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources';
 import { Metrics } from '@/utils/monitoring/metrics';
-import { needsSummarization, compressConversation } from '@/utils/claude/conversation-summarizer';
+import { compressConversation } from '@/utils/claude/conversation-summarizer';
 import { claudeNativeSystemPrompt } from '@/lib/prompts/claude-native-prompt';
 import { needsTokenCompression, calculateMessageTokens, compressMessages } from '@/utils/claude/token-manager';
+import { preprocessMessages, formatMessagesForClaude } from '@/utils/claude/message-preprocessor';
 import { ToolCoordinator } from '@/utils/claude/tool-coordinator';
 import { ToolCall } from '@/utils/claude/tool-pipeline';
 
@@ -31,9 +30,16 @@ const USE_SEQUENTIAL_TOOL_COORDINATOR = process.env.USE_SEQUENTIAL_TOOLS === 'tr
 // Helper function to get user-friendly tool display names
 function getToolDisplayName(toolName: string): string {
   const displayNames: Record<string, string> = {
+    // Original MVP tools
     'fpl_get_league_leaders': 'League Leaders',
     'fpl_get_player_stats': 'Player Statistics',
-    'fpl_search_players': 'Player Search'
+    'fpl_search_players': 'Player Search',
+    
+    // Migrated tools from SSE API
+    'fpl_get_team': 'Team Information',
+    'fpl_get_gameweek': 'Gameweek Information',
+    'fpl_search_fixtures': 'Fixture Search',
+    'fpl_compare_entities': 'Player/Team Comparison'
   };
   return displayNames[toolName] || toolName;
 }
@@ -77,7 +83,11 @@ function getUserFriendlyError(error: string | any, toolName: string): string {
   const toolFallbacks: Record<string, string> = {
     'fpl_get_league_leaders': 'I couldn\'t retrieve the league leaders. Please try again or ask for specific players instead.',
     'fpl_get_player_stats': 'I couldn\'t get that player\'s statistics. Please check the player name and try again.',
-    'fpl_search_players': 'The player search didn\'t work as expected. Try searching with just the last name.'
+    'fpl_search_players': 'The player search didn\'t work as expected. Try searching with just the last name.',
+    'fpl_get_team': 'I couldn\'t get information on that team. Please check the team name and try again.',
+    'fpl_get_gameweek': 'I couldn\'t get information on that gameweek. Please check the gameweek number and try again.',
+    'fpl_search_fixtures': 'The fixture search didn\'t work as expected. Try searching with a specific match day or team.',
+    'fpl_compare_entities': 'I couldn\'t run a comparison. Please check the names and try again.'
   };
 
   return toolFallbacks[toolName] || 'I encountered an issue with that request. Please try rephrasing or asking something else.';
@@ -352,14 +362,8 @@ export async function POST(req: NextRequest) {
         // Send session ID to client
         sendEvent('session-id', { mcpSessionId: validSessionId });
 
-        // Store user message for authenticated users
-        if (user && chatId) {
-          await supabase.from('messages').insert({
-            chat_id: chatId,
-            content: message,
-            role: 'user',
-          });
-        }
+        // NOTE: User message will be stored together with assistant message after processing
+        // This prevents duplicate messages in the context
 
         // Retrieve conversation context
         let context = await getChatContext(chatId || '');
@@ -375,12 +379,11 @@ export async function POST(req: NextRequest) {
           }, CLAUDE_CONFIG.MODEL_VERSION)
         };
         
-        // Update context with the new message
-        if (context) {
-          await updateChatContext(chatId || '', [userMessage], validSessionId);
-          
-          // Check if we need to compress the conversation using sophisticated token analysis
-          if (needsTokenCompression(context.messages, CLAUDE_CONFIG.MODEL_VERSION)) {
+        // NOTE: We'll update context AFTER sending to Claude, not before
+        // This prevents sending the current message twice
+        
+        // Check if we need to compress the conversation using sophisticated token analysis
+        if (context && needsTokenCompression(context.messages, CLAUDE_CONFIG.MODEL_VERSION)) {
             console.log('Compressing conversation due to approaching token limit');
             
             // Use our priority-based message compression
@@ -397,14 +400,36 @@ export async function POST(req: NextRequest) {
             // Update context with compressed messages
             await updateChatContext(chatId || '', [], validSessionId);
           }
-        }
         
         // Get conversation metrics
         const metrics = await getConversationMetrics(chatId || '');
         console.log('Conversation metrics:', metrics);
         
-        // Format the context messages for Claude
-        const contextMessages = context ? formatContextForClaude(context) : [];
+        // Preprocess messages to separate context from current query
+        const rawContextMessages = context ? formatContextForClaude(context) : [];
+        
+        // DEBUG: Log raw context messages
+        console.log('=== RAW CONTEXT MESSAGES ===');
+        console.log(JSON.stringify(rawContextMessages, null, 2));
+        console.log('=== END RAW CONTEXT ===');
+        
+        const preprocessed = preprocessMessages(
+          rawContextMessages,
+          message,
+          { 
+            maxTokens: Math.floor(CLAUDE_CONFIG.MAX_TOKENS_EXTENDED * 0.2), // Use 20% of context window
+            preserveLastN: 3 // Always keep last 3 messages for immediate context
+          }
+        );
+        const contextMessages = preprocessed.contextMessages;
+        
+        console.log(`Message preprocessing: ${preprocessed.wasCompressed ? 'compressed' : 'full'} context, ${preprocessed.totalTokens} tokens`);
+        
+        // DEBUG: Log the exact message array being sent to Claude
+        const messagesForClaude = formatMessagesForClaude(preprocessed);
+        console.log('=== MESSAGES BEING SENT TO CLAUDE ===');
+        console.log(JSON.stringify(messagesForClaude, null, 2));
+        console.log('=== END MESSAGES ===');
         
         // Record message metrics
         await Metrics.recordChatMessage('user', userMessage.tokenCount || 0);
@@ -423,7 +448,7 @@ export async function POST(req: NextRequest) {
           try {
             const result = await executeWithToolCoordinator(
               message,
-              [...contextMessages, { role: 'user', content: message }],
+              messagesForClaude, // Use the preprocessed messages which already include the current message
               validSessionId,
               chatId || '',
               sendEvent
@@ -451,14 +476,25 @@ export async function POST(req: NextRequest) {
                 })) || []
               };
               
-              await updateChatContext(chatId, [assistantMessage], validSessionId);
-              await supabase.from('messages').insert({
-                chat_id: chatId,
-                content: completeResponse,
-                role: 'assistant',
-                token_count: assistantMessage.tokenCount,
-                tool_calls: assistantMessage.tool_calls
-              });
+              // Update context with BOTH user and assistant messages
+              await updateChatContext(chatId, [userMessage, assistantMessage], validSessionId);
+              
+              // Store BOTH messages in database
+              await supabase.from('messages').insert([
+                {
+                  chat_id: chatId,
+                  content: userMessage.content,
+                  role: 'user',
+                  token_count: userMessage.tokenCount
+                },
+                {
+                  chat_id: chatId,
+                  content: completeResponse,
+                  role: 'assistant',
+                  token_count: assistantMessage.tokenCount,
+                  tool_calls: assistantMessage.tool_calls
+                }
+              ]);
             }
             
             controller.close();
@@ -475,11 +511,19 @@ export async function POST(req: NextRequest) {
         }
         
         // Original implementation for backward compatibility
+        // DEBUG: Log final API call parameters
+        const apiMessages = formatMessagesForClaude(preprocessed);
+        console.log('=== ANTHROPIC API CALL ===');
+        console.log('System Prompt:', CLAUDE_SYSTEM_PROMPT.substring(0, 200) + '...');
+        console.log('Messages:', JSON.stringify(apiMessages, null, 2));
+        console.log('Tool Choice:', determineToolChoice(message, context));
+        console.log('=== END API CALL ===');
+        
         const stream = await anthropic.messages.create({
           model: CLAUDE_CONFIG.MODEL_VERSION,
           max_tokens: CLAUDE_CONFIG.MAX_TOKENS_DEFAULT,
           system: CLAUDE_SYSTEM_PROMPT,
-          messages: [...contextMessages, { role: 'user', content: message }],
+          messages: apiMessages,
           tools: toolsForClaude, // Always provide tools - trust Claude to decide when to use them
           tool_choice: determineToolChoice(message, context), // Minimal override for greetings only
           stream: true,
@@ -996,17 +1040,26 @@ export async function POST(req: NextRequest) {
             }))
           };
           
-          // Store in database with tool information
-          await supabase.from('messages').insert({
-            chat_id: chatId,
-            content: completeResponse,
-            role: 'assistant',
-            token_count: assistantMessage.tokenCount,
-            tool_calls: assistantMessage.tool_calls,
-            tool_results: assistantMessage.tool_results
-          });
+          // Store BOTH messages in database with tool information
+          await supabase.from('messages').insert([
+            {
+              chat_id: chatId,
+              content: userMessage.content,
+              role: 'user',
+              token_count: userMessage.tokenCount
+            },
+            {
+              chat_id: chatId,
+              content: completeResponse,
+              role: 'assistant',
+              token_count: assistantMessage.tokenCount,
+              tool_calls: assistantMessage.tool_calls,
+              tool_results: assistantMessage.tool_results
+            }
+          ]);
           
-          await updateChatContext(chatId, [assistantMessage], validSessionId);
+          // Now update context with BOTH user and assistant messages
+          await updateChatContext(chatId, [userMessage, assistantMessage], validSessionId);
           
           // Record assistant message metrics
           await Metrics.recordChatMessage('assistant', assistantMessage.tokenCount || 0);

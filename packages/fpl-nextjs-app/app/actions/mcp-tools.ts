@@ -308,9 +308,6 @@ export async function callMcpTool(
     sessionId?: string
 ) {
     try {
-        console.log(`[callMcpTool] Called with tool: ${toolName}, sessionId: ${sessionId}`);
-        console.log(`[callMcpTool] EXPRESS_MCP_SERVER_PRIVATE: "${process.env.EXPRESS_MCP_SERVER_PRIVATE}"`);
-        
         // If no session ID provided or session validation fails, initialize a new one
         if (!sessionId) {
             console.log('No session ID provided, initializing a new MCP session');
@@ -324,24 +321,62 @@ export async function callMcpTool(
             }
         }
 
-        // Handle specific tool name and argument remapping if needed
-        let mappedToolName = toolName;
+        // Handle specific parameter processing if needed
         let mappedArgs = { ...args }; // Clone to avoid modifying original
         
-        // Tool-specific mappings
-        if (toolName === 'get-gameweek') {
-            mappedToolName = 'get-current-gameweek';
-            // get-current-gameweek doesn't take arguments based on the server definition
-            mappedArgs = {};
-        } else if (toolName === 'get-gameweek-fixtures' && args.gameweekId) {
+        // Handle numeric parameters to ensure they're properly typed
+        if ((toolName === 'fpl_get_gameweek' || toolName === 'get-gameweek') && args.gameweekId) {
             // Ensure gameweekId is a number
             mappedArgs.gameweekId = Number(args.gameweekId);
-        } else if (toolName === 'get-team' && args.teamId) {
-            // Ensure teamId is a number
-            mappedArgs.teamId = Number(args.teamId);
-        } else if (toolName === 'get-player' && args.playerId) {
-            // Ensure playerId is a number
-            mappedArgs.playerId = Number(args.playerId);
+        } else if (toolName === 'fpl_form_analysis' && args.timeframe) {
+            // Ensure timeframe is a number
+            mappedArgs.timeframe = Number(args.timeframe);
+        }
+        
+        // Handle array parameters passed as comma-separated strings
+        if (toolName === 'fpl_player_comparison' && args.playerQueries) {
+            // Convert comma-separated string to array
+            if (typeof args.playerQueries === 'string') {
+                mappedArgs.playerQueries = args.playerQueries.split(',').map(item => item.trim());
+            }
+            // Convert categories to array if provided as string
+            if (args.categories && typeof args.categories === 'string') {
+                mappedArgs.categories = args.categories.split(',').map(item => item.trim());
+            }
+        } else if (toolName === 'fpl_form_analysis' && args.metricFocus && typeof args.metricFocus === 'string') {
+            // Convert comma-separated string to array
+            mappedArgs.metricFocus = args.metricFocus.split(',').map(item => item.trim());
+        }
+        
+        // Support legacy tool names for backward compatibility (non-fpl_ prefixed)
+        let mappedToolName = toolName;
+        
+        // Legacy tool mappings
+        const toolMappings: Record<string, string> = {
+            // Legacy tool names (without fpl_ prefix)
+            'get-team': 'fpl_team_data',
+            'get-gameweek': 'fpl_get_gameweek',
+            'search-fixtures': 'fpl_fixture_data',
+            'compare-entities': 'fpl_player_comparison',
+            'search-players': 'fpl_player_data',
+            'get-player': 'fpl_player_data',
+            'get-league-leaders': 'fpl_league_data',
+            
+            // Map old tool names to new MCP tools
+            'fpl_get_team': 'fpl_team_data',
+            'fpl_search_fixtures': 'fpl_fixture_data',
+            'fpl_compare_entities': 'fpl_player_comparison',
+            'fpl_search_players': 'fpl_player_data',
+            'fpl_get_player': 'fpl_player_data',
+            'fpl_get_player_stats': 'fpl_player_data',
+            'fpl_get_league_leaders': 'fpl_league_data',
+            'fpl_fixture_analysis': 'fpl_fixture_difficulty'
+            // Form analysis tool name is already correct
+        };
+        
+        // Use mapped tool name if available
+        if (toolMappings[toolName]) {
+            mappedToolName = toolMappings[toolName];
         }
 
         console.log(`Using mapped tool: ${mappedToolName} with args:`, mappedArgs);

@@ -1,7 +1,5 @@
-export interface StructuredErrorResponse {
-    content: { type: 'text'; text: string }[];
-    isError: true;
-}
+// src/lib/utils/response-helpers.ts
+import { McpToolResponse } from '../../types/mcp-types';
 
 /**
  * Creates a standardized structured error response object for MCP tools.
@@ -14,7 +12,7 @@ export function createStructuredErrorResponse(
     message: string,
     type: string = 'GENERIC_ERROR',
     suggestions?: string[]
-): StructuredErrorResponse {
+): McpToolResponse {
     const dataTimestamp = new Date().toISOString();
     let text = `ERROR:\nType: ${type}\nMessage: ${message}`;
 
@@ -24,9 +22,8 @@ export function createStructuredErrorResponse(
 
     text += `\n\nData timestamp: ${dataTimestamp}`;
 
-    const response = {
-        content: [{ type: 'text' as const, text }], // 'text' as const ensures literal type
-        isError: true as const, // Use 'as const' if isError must be literal true
+    return {
+        content: [{ type: 'text' as const, text }],
+        isError: true
     };
-    return response;
 }
