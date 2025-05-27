@@ -22,7 +22,9 @@ export const createMcpServer = () => {
 
 // Create a new transport (stateless)
 export const createTransport = async (): Promise<StreamableHTTPServerTransport> => {
-    const transport = new StreamableHTTPServerTransport();
+    const transport = new StreamableHTTPServerTransport({
+        // No session ID needed for stateless
+    });
     return transport;
 };
 

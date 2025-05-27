@@ -20,11 +20,6 @@ export default function ChatUI() {
             : null
     );
 
-                }
-            }
-        }
-    }, []);
-
     // Scroll to bottom when messages change
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,7 +27,7 @@ export default function ChatUI() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || isProcessing || isInitializing) return;
+        if (!input.trim() || isProcessing) return;
 
         // Add user message to UI immediately
         const userMessage: Message = { role: 'user', content: input };
