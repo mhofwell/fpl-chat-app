@@ -8,94 +8,13 @@ import { createClient } from '@/utils/supabase/server';
 type ToolCallParams = {
     name: string;
     arguments: Record<string, any>;
-    sessionId?: string;
 };
 
 type ToolResult = {
     content: Array<{ text: string }> | null;
     error?: string;
-    sessionId?: string;
 };
 
-/**
- * Initialize a new MCP session
- */
-export async function initializeMcpSession(retryCount = 3): Promise<string | undefined> {
-    const MCP_SERVER_URL =
-        `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT}` || 'http://localhost:3001';
-
-    for (let attempt = 1; attempt <= retryCount; attempt++) {
-        try {
-            console.log(`Initializing MCP session (attempt ${attempt}/${retryCount})`);
-            
-            // Send a compliant MCP initialize request
-            const response = await fetch(`${MCP_SERVER_URL}/mcp`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json, text/event-stream'
-                },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    method: 'initialize',
-                    params: {
-                        protocolVersion: '0.1.0',
-                        capabilities: {
-                            experimental: {},
-                            sampling: {},
-                        },
-                        clientInfo: {
-                            name: 'fpl-nextjs-app',
-                            version: '1.0.0',
-                        },
-                    },
-                    id: 1,
-                }),
-            });
-
-            // Get the session ID from response headers
-            const sessionId = response.headers.get('mcp-session-id');
-
-            if (!sessionId) {
-                console.error(
-                    `Failed to initialize MCP session (attempt ${attempt}/${retryCount}): No session ID returned`
-                );
-                
-                // Check if the response has a JSON error
-                try {
-                    const errorResponse = await response.text();
-                    console.error('Error response:', errorResponse);
-                } catch (parseError) {
-                    // Ignore parse errors
-                }
-                
-                // Only retry if we haven't reached max attempts
-                if (attempt < retryCount) {
-                    // Wait a bit before retrying (exponential backoff)
-                    await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt - 1)));
-                    continue;
-                }
-                
-                return undefined;
-            }
-
-            console.log(`MCP session initialized: ${sessionId}`);
-            return sessionId;
-        } catch (error) {
-            console.error(`Error initializing MCP session (attempt ${attempt}/${retryCount}):`, error);
-            
-            // Only retry if we haven't reached max attempts
-            if (attempt < retryCount) {
-                // Wait a bit before retrying (exponential backoff)
-                await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt - 1)));
-                continue;
-            }
-        }
-    }
-    
-    console.error(`Failed to initialize MCP session after ${retryCount} attempts`);
-    return undefined;
-}
 
 /**
  * Server-side MCP client that communicates with the MCP Express server
@@ -106,10 +25,6 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
     const TIMEOUT_MS = 10000; // 10 second timeout
 
     try {
-        // Ensure we have a session ID
-        if (!params.sessionId) {
-            throw new Error('Missing MCP session ID');
-        }
 
         // Construct a proper JSON-RPC 2.0 request
         const jsonRpcRequest = {
@@ -138,7 +53,6 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json, text/event-stream',
-                    'mcp-session-id': params.sessionId,
                 },
                 body: JSON.stringify(jsonRpcRequest),
             });
@@ -202,7 +116,6 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
 
             const result: ToolResult = {
                 content,
-                sessionId: params.sessionId,
             };
 
             return result;
@@ -219,7 +132,6 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
             return {
                 content: null,
                 error: 'Request timed out after 10 seconds. The MCP server might be experiencing issues.',
-                sessionId: params.sessionId,
             };
         }
         
@@ -230,29 +142,15 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
                 error instanceof Error
                     ? error.message
                     : 'Unknown error calling MCP tool',
-            sessionId: params.sessionId,
         };
     }
 }
 
 export async function callMcpTool(
     toolName: string,
-    args: Record<string, any>,
-    sessionId?: string
+    args: Record<string, any>
 ) {
     try {
-        // If no session ID provided or session validation fails, initialize a new one
-        if (!sessionId) {
-            console.log('No session ID provided, initializing a new MCP session');
-            sessionId = await initializeMcpSession();
-            
-            if (!sessionId) {
-                return {
-                    success: false,
-                    error: 'Failed to initialize MCP session',
-                };
-            }
-        }
 
         // Handle specific tool name and argument remapping if needed
         let mappedToolName = toolName;
@@ -279,65 +177,25 @@ export async function callMcpTool(
         const result = await callMcpServerTool({
             name: mappedToolName,
             arguments: mappedArgs,
-            sessionId,
         });
 
-        // If we get an invalid/missing session ID error, try to initialize a new session and retry
-        if (result.error && (
-            result.error.includes('Invalid or missing session ID') || 
-            result.error.includes('Parse error')
-        )) {
-            console.log('Session ID error or Parse error detected, reinitializing session and retrying');
-            const newSessionId = await initializeMcpSession();
-            
-            if (!newSessionId) {
-                return {
-                    success: false,
-                    error: 'Failed to reinitialize MCP session after invalid session error',
-                };
-            }
-            
-            // Retry with new session ID
-            const retryResult = await callMcpServerTool({
-                name: mappedToolName,
-                arguments: mappedArgs,
-                sessionId: newSessionId,
-            });
-            
-            if (retryResult.error) {
-                return {
-                    success: false,
-                    error: retryResult.error,
-                    sessionId: retryResult.sessionId,
-                };
-            }
-            
-            return {
-                success: true,
-                result: retryResult.content,
-                sessionId: retryResult.sessionId,
-            };
-        }
 
         if (result.error) {
             return {
                 success: false,
                 error: result.error,
-                sessionId: result.sessionId,
             };
         }
 
         return {
             success: true,
             result: result.content,
-            sessionId: result.sessionId,
         };
     } catch (error) {
         console.error('Error calling MCP tool:', error);
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
-            sessionId,
         };
     }
 }
