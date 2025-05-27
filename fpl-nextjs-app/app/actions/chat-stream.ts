@@ -15,6 +15,7 @@ export async function* streamChatResponse(
     let sessionId = mcpSessionId;
 
     try {
+        console.log('Starting streamChatResponse with:', { message, mcpSessionId });
         // Call Claude with tools enabled and streaming
         const stream = await anthropic.messages.create({
             model: 'claude-3-5-sonnet-20241022',
@@ -127,9 +128,11 @@ export async function* streamChatResponse(
         const toolCalls: any[] = [];
         
         for await (const chunk of stream) {
+            console.log('Received chunk:', chunk.type, chunk);
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
                 yield { type: 'text', content: chunk.delta.text };
             } else if (chunk.type === 'content_block_start' && chunk.content_block.type === 'tool_use') {
+                console.log('Found tool call:', chunk.content_block.name);
                 toolCalls.push(chunk.content_block);
                 yield { type: 'tool_call', toolName: chunk.content_block.name };
             }
@@ -137,6 +140,7 @@ export async function* streamChatResponse(
         
         // If there were tool calls, handle them and get a follow-up response
         if (toolCalls.length > 0) {
+            console.log('Processing tool calls:', toolCalls.length);
             // Run the tools
             const toolResults = await Promise.all(
                 toolCalls.map(async (toolCall) => {
