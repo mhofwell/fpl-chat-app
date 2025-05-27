@@ -46,6 +46,7 @@ router.post('/', async (req: Request, res: Response) => {
             const server = getMcpServer();
             await server.connect(transport);
             console.log(`Transport connected, sessionId: ${transport.sessionId}`);
+            
         } else if (sessionId) {
             // Try to get existing transport
             transport = getTransport(sessionId);
@@ -75,38 +76,10 @@ router.post('/', async (req: Request, res: Response) => {
             return;
         }
         
-        // For initialization requests, handle manually to ensure JSON response
-        if (!sessionId && isInitializeRequest(req.body)) {
-            console.log(`Handling initialization request manually`);
-            
-            // Send JSON-RPC initialize response
-            const requestBody = req.body as any;
-            const response = {
-                jsonrpc: '2.0',
-                result: {
-                    protocolVersion: '0.1.0',
-                    capabilities: {
-                        experimental: {},
-                        sampling: {},
-                    },
-                    serverInfo: {
-                        name: 'FPL-MCP-Server',
-                        version: '1.0.0',
-                    },
-                },
-                id: requestBody.id,
-            };
-            
-            res.setHeader('Content-Type', 'application/json');
-            res.json(response);
-            
-            console.log(`Initialization response sent with session ID: ${transport.sessionId}`);
-        } else {
-            // Handle other requests normally
-            console.log(`About to handle request, transport.sessionId: ${transport.sessionId}`);
-            await transport.handleRequest(req, res, req.body);
-            console.log(`After handling request, transport.sessionId: ${transport.sessionId}`);
-        }
+        // Handle the request through the transport
+        console.log(`About to handle request, transport.sessionId: ${transport.sessionId}`);
+        await transport.handleRequest(req, res, req.body);
+        console.log(`After handling request, transport.sessionId: ${transport.sessionId}`);
     } catch (error) {
         console.error('Error handling MCP request:', error);
 

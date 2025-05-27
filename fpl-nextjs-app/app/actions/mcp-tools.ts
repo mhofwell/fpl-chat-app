@@ -56,16 +56,19 @@ export async function initializeMcpSession(): Promise<string | undefined> {
         console.log('Initialize response status:', response.status);
         console.log('Initialize response headers:', Object.fromEntries(response.headers.entries()));
         
-        // Read the response body to ensure the request completes
-        const responseBody = await response.json();
-        console.log('Initialize response body:', responseBody);
-        
-        // Get the session ID from response headers
+        // Get the session ID from response headers (don't parse body for SSE)
         const sessionId = response.headers.get('mcp-session-id');
 
         if (!sessionId) {
             console.error('Failed to initialize MCP session: No session ID returned');
             console.error('Response headers:', Object.fromEntries(response.headers.entries()));
+            // Try to read response for debugging
+            try {
+                const responseText = await response.text();
+                console.error('Response body:', responseText);
+            } catch (e) {
+                console.error('Could not read response body:', e);
+            }
             return undefined;
         }
 
