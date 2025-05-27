@@ -22,6 +22,16 @@ export interface Player {
     points_per_game?: string;
     total_points?: number;
     selected_by_percent?: string;
+    
+    // Stats
+    goals_scored?: number;
+    assists?: number;
+    clean_sheets?: number;
+    minutes?: number;
+    yellow_cards?: number;
+    red_cards?: number;
+    saves?: number;
+    bonus?: number;
 }
 
 export interface Gameweek {

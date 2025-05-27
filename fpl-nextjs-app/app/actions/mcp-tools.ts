@@ -53,11 +53,19 @@ export async function initializeMcpSession(): Promise<string | undefined> {
             }),
         });
 
+        console.log('Initialize response status:', response.status);
+        console.log('Initialize response headers:', Object.fromEntries(response.headers.entries()));
+        
+        // Read the response body to ensure the request completes
+        const responseBody = await response.json();
+        console.log('Initialize response body:', responseBody);
+        
         // Get the session ID from response headers
         const sessionId = response.headers.get('mcp-session-id');
 
         if (!sessionId) {
             console.error('Failed to initialize MCP session: No session ID returned');
+            console.error('Response headers:', Object.fromEntries(response.headers.entries()));
             return undefined;
         }
 
@@ -240,6 +248,9 @@ export async function callMcpTool(
         } else if (toolName === 'get-player' && args.playerId) {
             // Ensure playerId is a number
             mappedArgs.playerId = Number(args.playerId);
+        } else if (toolName === 'get-top-scorers' && args.limit) {
+            // Ensure limit is a number
+            mappedArgs.limit = Number(args.limit);
         }
 
         console.log(`Using mapped tool: ${mappedToolName} with args:`, mappedArgs);

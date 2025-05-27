@@ -143,6 +143,24 @@ export async function processUserMessage(
                         required: ['gameweekId'],
                     },
                 },
+                {
+                    name: 'get-top-scorers',
+                    description: 'Get the top goal scorers in the Premier League',
+                    input_schema: {
+                        type: 'object',
+                        properties: {
+                            limit: {
+                                type: 'number',
+                                description: 'Number of top scorers to return (default: 10)',
+                            },
+                            position: {
+                                type: 'string',
+                                description: 'Filter by position (GKP, DEF, MID, FWD)',
+                            },
+                        },
+                        required: [],
+                    },
+                },
             ],
             tool_choice: { type: 'auto' },
         });
