@@ -14,7 +14,15 @@ export function registerTools(server: McpServer) {
     // FPL tools
     server.tool('get-current-gameweek', {}, getCurrentGameweek);
     server.tool('get-team', { teamId: z.number() }, getTeam);
-    server.tool('get-player', { playerId: z.number() }, getPlayer);
+    server.tool(
+        'get-player',
+        {
+            playerId: z.number().optional(),
+            playerName: z.string().optional(),
+            includeRawData: z.boolean().optional(),
+        },
+        getPlayer
+    );
     server.tool(
         'get-gameweek-fixtures',
         { gameweekId: z.number() },

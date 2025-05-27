@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(npm run execute-tool:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run:*)",
+      "Bash(tsc --noEmit)",
+      "WebFetch(domain:github.com)",
+      "Bash(git checkout:*)",
+      "Bash(rg:*)"
+    ],
+    "deny": []
+  }
+}

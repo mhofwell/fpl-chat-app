@@ -36,6 +36,9 @@ yarn-error.log*
 # redis
 dump.rdb
 
+# packages directory (prevent accidental recreation)
+/packages/
+
 # TypeScript
 *.tsbuildinfo
 

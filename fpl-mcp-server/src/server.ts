@@ -5,8 +5,6 @@ import { config } from './config';
 import mcpRouter from './routes/mcp';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from './tools';
-import { registerResources } from './resources';
-import { registerPrompts } from './prompts';
 import bodyParser from 'body-parser';
 
 const app = express();
@@ -64,10 +62,8 @@ export const createMcpServer = () => {
         version: '1.0.0',
     });
 
-    // Register all components
+    // Register all tools
     registerTools(server);
-    registerResources(server);
-    registerPrompts(server);
 
     return server;
 };
