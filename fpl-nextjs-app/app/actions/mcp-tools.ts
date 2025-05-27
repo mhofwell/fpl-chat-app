@@ -22,7 +22,7 @@ type ToolResult = {
  */
 export async function initializeMcpSession(retryCount = 3): Promise<string | undefined> {
     const MCP_SERVER_URL =
-        process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
+        `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT}` || 'http://localhost:3001';
 
     for (let attempt = 1; attempt <= retryCount; attempt++) {
         try {
