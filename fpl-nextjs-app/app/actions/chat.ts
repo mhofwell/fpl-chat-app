@@ -16,7 +16,8 @@ const anthropic = new Anthropic({
 
 export async function processUserMessage(
     chatId: string | null,
-    message: string
+    message: string,
+    mcpSessionId?: string
 ) {
     const supabase = await createClient();
     const {
@@ -53,6 +54,8 @@ export async function processUserMessage(
         });
     }
 
+
+    let sessionId = mcpSessionId;
 
     try {
         // Call Claude with tools enabled
@@ -160,8 +163,14 @@ export async function processUserMessage(
                 toolCalls.map(async (toolCall) => {
                     const result = await callMcpTool(
                         toolCall.name,
-                        toolCall.input as Record<string, any>
+                        toolCall.input as Record<string, any>,
+                        sessionId
                     );
+                    
+                    // Update session ID if we got a new one
+                    if (result.sessionId && result.sessionId !== sessionId) {
+                        sessionId = result.sessionId;
+                    }
                     
                     return {
                         toolCall,
@@ -217,6 +226,7 @@ export async function processUserMessage(
             success: true,
             chatId,
             answer,
+            mcpSessionId: sessionId,
         };
     } catch (error) {
         console.error('Error processing message with Claude:', error);
@@ -224,6 +234,7 @@ export async function processUserMessage(
             success: false,
             chatId,
             answer: 'Sorry, I encountered an error while processing your question.',
+            mcpSessionId: sessionId,
         };
     }
 }

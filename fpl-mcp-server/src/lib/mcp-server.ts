@@ -2,40 +2,60 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { randomUUID } from 'crypto';
-import redis from './redis/redis-client';
 import { registerTools } from '../tools';
 
-// No session storage needed for stateless approach
+// Map to store transports by session ID
+const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
-// Create MCP server
-export const createMcpServer = () => {
-    const server = new McpServer({
-        name: 'FPL-MCP-Server',
-        version: '1.0.0',
-    });
+// Single server instance to be reused
+let mcpServer: McpServer | null = null;
 
-    // Register all tools using the modular approach
-    registerTools(server);
+// Get or create the MCP server instance
+export const getMcpServer = () => {
+    if (!mcpServer) {
+        mcpServer = new McpServer({
+            name: 'FPL-MCP-Server',
+            version: '1.0.0',
+        });
 
-    return server;
+        // Register all tools using the modular approach
+        registerTools(mcpServer);
+    }
+    
+    return mcpServer;
 };
 
-// Create a new transport (stateless)
-export const createTransport = async (): Promise<StreamableHTTPServerTransport> => {
+// Create a new transport with session management
+export const createTransport = async (sessionId?: string): Promise<StreamableHTTPServerTransport> => {
     const transport = new StreamableHTTPServerTransport({
-        // No session ID needed for stateless
+        sessionIdGenerator: () => sessionId || randomUUID(),
+        onsessioninitialized: (id) => {
+            // Store the transport when session is initialized
+            transports[id] = transport;
+            console.log(`Session initialized: ${id}`);
+        }
     });
+    
+    // Set up cleanup handler
+    transport.onclose = () => {
+        if (transport.sessionId) {
+            delete transports[transport.sessionId];
+            console.log(`Session closed: ${transport.sessionId}`);
+        }
+    };
+    
     return transport;
 };
 
-// Create and connect a stateless MCP handler
-export const handleMcpRequest = async (req: any, res: any, body: any) => {
-    // Create a new transport and server for each request
-    const transport = await createTransport();
-    const server = createMcpServer();
-    await server.connect(transport);
-    
-    // Handle the request
-    await transport.handleRequest(req, res, body);
+// Get existing transport by session ID
+export const getTransport = (sessionId: string): StreamableHTTPServerTransport | undefined => {
+    return transports[sessionId];
+};
+
+// Clean up all transports (for shutdown)
+export const cleanupTransports = async () => {
+    for (const sessionId in transports) {
+        await transports[sessionId].close();
+    }
 };
 

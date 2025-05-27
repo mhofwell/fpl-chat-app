@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { processUserMessage } from '@/app/actions/chat';
+import { initializeMcpSession } from '@/app/actions/mcp-tools';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -19,6 +20,7 @@ export default function ChatUI() {
             ? localStorage.getItem('fpl_chat_id')
             : null
     );
+    const [mcpSessionId, setMcpSessionId] = useState<string | undefined>();
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -39,12 +41,18 @@ export default function ChatUI() {
             // Process message via server action
             const response = await processUserMessage(
                 chatId,
-                userMessage.content
+                userMessage.content,
+                mcpSessionId
             );
 
             if (response.chatId && response.chatId !== chatId) {
                 setChatId(response.chatId);
                 localStorage.setItem('fpl_chat_id', response.chatId);
+            }
+            
+            // Update session ID if we got a new one
+            if (response.mcpSessionId && response.mcpSessionId !== mcpSessionId) {
+                setMcpSessionId(response.mcpSessionId);
             }
             
 

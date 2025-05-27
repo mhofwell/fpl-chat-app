@@ -70,10 +70,10 @@ export async function scheduleUpdateProcessor(job: Job) {
             throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorBody}`);
         }
 
-        const result = await response.json();
+        const result = await response.json() as Record<string, any>;
         
         const enhancedResult = {
-            ...result, 
+            ...(typeof result === 'object' && result !== null ? result : {}), 
             jobContext: { 
                 id: job.id,
                 refreshType: freshContext.refreshType,
