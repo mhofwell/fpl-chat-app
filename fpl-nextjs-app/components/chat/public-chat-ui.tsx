@@ -79,7 +79,7 @@ export default function ChatUI() {
                         return newMessages;
                     });
                 } else if (chunk.type === 'error') {
-                    fullContent = chunk.content;
+                    fullContent = chunk.content || 'An error occurred';
                     setMessages((prev) => {
                         const newMessages = [...prev];
                         newMessages[assistantMessageIndex] = {
