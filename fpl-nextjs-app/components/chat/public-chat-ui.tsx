@@ -64,9 +64,22 @@ export default function ChatUI() {
                         };
                         return newMessages;
                     });
+                } else if (chunk.type === 'session') {
+                    // Store the session ID for future use
+                    setMcpSessionId(chunk.sessionId);
                 } else if (chunk.type === 'tool_call') {
                     // Show user that a tool is being called
                     fullContent += `\n\n_Checking ${chunk.toolName}..._\n\n`;
+                    setMessages((prev) => {
+                        const newMessages = [...prev];
+                        newMessages[assistantMessageIndex] = {
+                            role: 'assistant',
+                            content: fullContent,
+                        };
+                        return newMessages;
+                    });
+                } else if (chunk.type === 'error') {
+                    fullContent = chunk.content;
                     setMessages((prev) => {
                         const newMessages = [...prev];
                         newMessages[assistantMessageIndex] = {

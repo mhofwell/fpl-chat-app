@@ -220,17 +220,13 @@ export async function callMcpTool(
     sessionId?: string
 ) {
     try {
-        // Initialize session if not provided
+        // Session should already be initialized by the caller
         if (!sessionId) {
-            console.log('No session ID provided, initializing new MCP session');
-            sessionId = await initializeMcpSession();
-            
-            if (!sessionId) {
-                return {
-                    success: false,
-                    error: 'Failed to initialize MCP session',
-                };
-            }
+            console.error('No session ID provided to callMcpTool');
+            return {
+                success: false,
+                error: 'MCP session ID is required',
+            };
         }
 
         // Handle specific tool name and argument remapping if needed

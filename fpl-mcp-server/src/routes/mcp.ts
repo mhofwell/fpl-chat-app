@@ -63,6 +63,27 @@ router.post('/', async (req: Request, res: Response) => {
                 });
                 return;
             }
+            
+            // For tool invocation, we need to handle the response differently
+            console.log(`About to handle request, transport.sessionId: ${transport.sessionId}`);
+            
+            // Check if this is a tool invocation that needs JSON response
+            const requestBody = req.body as any;
+            if (requestBody.method === 'invokeTool') {
+                console.log(`Handling tool invocation: ${requestBody.params?.name}`);
+                
+                // Set content type to JSON for tool responses
+                res.setHeader('Content-Type', 'application/json');
+                
+                // Handle the tool request and capture the response
+                await transport.handleRequest(req, res, req.body);
+                console.log(`Tool invocation handled`);
+            } else {
+                // Handle other requests normally (SSE)
+                await transport.handleRequest(req, res, req.body);
+            }
+            
+            console.log(`After handling request, transport.sessionId: ${transport.sessionId}`);
         } else {
             // Not an initialization request and no session ID
             res.status(400).json({
@@ -75,11 +96,6 @@ router.post('/', async (req: Request, res: Response) => {
             });
             return;
         }
-        
-        // Handle the request through the transport
-        console.log(`About to handle request, transport.sessionId: ${transport.sessionId}`);
-        await transport.handleRequest(req, res, req.body);
-        console.log(`After handling request, transport.sessionId: ${transport.sessionId}`);
     } catch (error) {
         console.error('Error handling MCP request:', error);
 

@@ -16,6 +16,20 @@ export async function* streamChatResponse(
 
     try {
         console.log('Starting streamChatResponse with:', { message, mcpSessionId });
+        
+        // Initialize MCP session if not provided
+        if (!sessionId) {
+            const { initializeMcpSession } = await import('./mcp-tools');
+            sessionId = await initializeMcpSession();
+            
+            if (!sessionId) {
+                yield { type: 'error', content: 'Failed to initialize MCP session. Please try again.' };
+                return;
+            }
+            
+            // Return the session ID to the client
+            yield { type: 'session', sessionId };
+        }
         // Call Claude with tools enabled and streaming
         const stream = await anthropic.messages.create({
             model: 'claude-3-5-sonnet-20241022',
@@ -128,15 +142,21 @@ export async function* streamChatResponse(
         const toolCalls: any[] = [];
         
         for await (const chunk of stream) {
-            console.log('Received chunk:', chunk.type, chunk);
+            console.log('Received chunk:', chunk.type);
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
                 yield { type: 'text', content: chunk.delta.text };
             } else if (chunk.type === 'content_block_start' && chunk.content_block.type === 'tool_use') {
                 console.log('Found tool call:', chunk.content_block.name);
                 toolCalls.push(chunk.content_block);
                 yield { type: 'tool_call', toolName: chunk.content_block.name };
+            } else if (chunk.type === 'content_block_start') {
+                console.log('Content block start:', chunk.content_block.type);
+            } else if (chunk.type === 'message_stop') {
+                console.log('Message stopped');
             }
         }
+        
+        console.log('Stream ended, tool calls found:', toolCalls.length);
         
         // If there were tool calls, handle them and get a follow-up response
         if (toolCalls.length > 0) {
