@@ -1,60 +1,17 @@
-// app/actions/chat.ts
+// app/actions/chat-stream.ts
 'use server';
 
 import { Anthropic } from '@anthropic-ai/sdk';
-import { TextBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources';
-// we will need to use the supabase client to store the chat history lets do this later
-//
-import { createClient } from '@/utils/supabase/server';
-import { v4 as uuidv4 } from 'uuid';
-//
 import { callMcpTool } from './mcp-tools';
 
 const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
-export async function processUserMessage(
-    chatId: string | null,
+export async function* streamChatResponse(
     message: string,
     mcpSessionId?: string
 ) {
-    const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-
-    // Create or get chat ID
-    if (!chatId) {
-        if (user) {
-            // Authenticated user: Create chat in database
-            const { data, error } = await supabase
-                .from('chats')
-                .insert({
-                    user_id: user.id,
-                    title: `Chat ${new Date().toLocaleDateString()}`,
-                })
-                .select()
-                .single();
-
-            if (error) throw error;
-            chatId = data.id;
-        } else {
-            // Anonymous user: Generate client-side ID
-            chatId = `anon-${uuidv4()}`;
-        }
-    }
-
-    // Store user message
-    if (user && chatId) {
-        await supabase.from('messages').insert({
-            chat_id: chatId,
-            content: message,
-            role: 'user',
-        });
-    }
-
-
     let sessionId = mcpSessionId;
 
     try {
@@ -167,14 +124,14 @@ export async function processUserMessage(
         });
 
         // Handle streaming response
-        let fullResponse = '';
         const toolCalls: any[] = [];
         
         for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-                fullResponse += chunk.delta.text;
+                yield { type: 'text', content: chunk.delta.text };
             } else if (chunk.type === 'content_block_start' && chunk.content_block.type === 'tool_use') {
                 toolCalls.push(chunk.content_block);
+                yield { type: 'tool_call', toolName: chunk.content_block.name };
             }
         }
         
@@ -229,38 +186,16 @@ export async function processUserMessage(
             });
             
             // Stream the final response
-            fullResponse = '';
             for await (const chunk of finalStream) {
                 if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-                    fullResponse += chunk.delta.text;
+                    yield { type: 'text', content: chunk.delta.text };
                 }
             }
         }
 
-        const answer = fullResponse;
-
-        // Store Claude's response for authenticated user
-        if (user && chatId && answer) {
-            await supabase.from('messages').insert({
-                chat_id: chatId,
-                content: answer,
-                role: 'assistant',
-            });
-        }
-
-        return {
-            success: true,
-            chatId,
-            answer,
-            mcpSessionId: sessionId,
-        };
+        return { sessionId };
     } catch (error) {
         console.error('Error processing message with Claude:', error);
-        return {
-            success: false,
-            chatId,
-            answer: 'Sorry, I encountered an error while processing your question.',
-            mcpSessionId: sessionId,
-        };
+        yield { type: 'error', content: 'Sorry, I encountered an error while processing your question.' };
     }
 }

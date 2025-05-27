@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { processUserMessage } from '@/app/actions/chat';
+import { streamChatResponse } from '@/app/actions/chat-stream';
 import { initializeMcpSession } from '@/app/actions/mcp-tools';
 
 interface Message {
@@ -38,40 +39,51 @@ export default function ChatUI() {
         setIsProcessing(true);
 
         try {
-            // Process message via server action
-            const response = await processUserMessage(
-                chatId,
-                userMessage.content,
-                mcpSessionId
-            );
-
-            if (response.chatId && response.chatId !== chatId) {
-                setChatId(response.chatId);
-                localStorage.setItem('fpl_chat_id', response.chatId);
-            }
-            
-            // Update session ID if we got a new one
-            if (response.mcpSessionId && response.mcpSessionId !== mcpSessionId) {
-                setMcpSessionId(response.mcpSessionId);
-            }
-            
-
-            // Add assistant response
+            // Add empty assistant message for streaming
+            const assistantMessageIndex = messages.length + 1;
             setMessages((prev) => [
                 ...prev,
                 {
                     role: 'assistant',
-                    content: response.answer,
+                    content: '',
                 },
             ]);
+
+            // Stream the response
+            const generator = streamChatResponse(userMessage.content, mcpSessionId);
+            let fullContent = '';
+            
+            for await (const chunk of generator) {
+                if (chunk.type === 'text') {
+                    fullContent += chunk.content;
+                    setMessages((prev) => {
+                        const newMessages = [...prev];
+                        newMessages[assistantMessageIndex] = {
+                            role: 'assistant',
+                            content: fullContent,
+                        };
+                        return newMessages;
+                    });
+                } else if (chunk.type === 'tool_call') {
+                    // Show user that a tool is being called
+                    fullContent += `\n\n_Checking ${chunk.toolName}..._\n\n`;
+                    setMessages((prev) => {
+                        const newMessages = [...prev];
+                        newMessages[assistantMessageIndex] = {
+                            role: 'assistant',
+                            content: fullContent,
+                        };
+                        return newMessages;
+                    });
+                }
+            }
         } catch (error) {
             console.error('Error processing message:', error);
             setMessages((prev) => [
-                ...prev,
+                ...prev.slice(0, -1), // Remove the empty assistant message
                 {
                     role: 'assistant',
-                    content:
-                        'Sorry, there was an error processing your request.',
+                    content: 'Sorry, there was an error processing your request.',
                 },
             ]);
         } finally {
