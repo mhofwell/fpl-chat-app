@@ -27,12 +27,16 @@ export const getMcpServer = () => {
 
 // Create a new transport with session management
 export const createTransport = async (sessionId?: string): Promise<StreamableHTTPServerTransport> => {
+    const generatedId = sessionId || randomUUID();
+    console.log(`Creating transport with session ID: ${generatedId}`);
+    
     const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => sessionId || randomUUID(),
+        sessionIdGenerator: () => generatedId,
         onsessioninitialized: (id) => {
             // Store the transport when session is initialized
             transports[id] = transport;
-            console.log(`Session initialized: ${id}`);
+            console.log(`Session initialized callback called: ${id}`);
+            console.log(`Transport sessionId property: ${transport.sessionId}`);
         }
     });
     
@@ -44,6 +48,7 @@ export const createTransport = async (sessionId?: string): Promise<StreamableHTT
         }
     };
     
+    console.log(`Transport created, sessionId before connect: ${transport.sessionId}`);
     return transport;
 };
 
@@ -51,6 +56,9 @@ export const createTransport = async (sessionId?: string): Promise<StreamableHTT
 export const getTransport = (sessionId: string): StreamableHTTPServerTransport | undefined => {
     return transports[sessionId];
 };
+
+// Export transports for direct access
+export { transports };
 
 // Clean up all transports (for shutdown)
 export const cleanupTransports = async () => {

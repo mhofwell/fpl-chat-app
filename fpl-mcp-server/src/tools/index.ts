@@ -5,6 +5,7 @@ import { getCurrentGameweek } from './fpl/gameweek';
 import { getTeam } from './fpl/team';
 import { getPlayer } from './fpl/player';
 import { getGameweekFixtures } from './fpl/fixtures';
+import { getTopScorers } from './fpl/top-scorers';
 import { echoMessage } from './echo';
 
 export function registerTools(server: McpServer) {
@@ -27,5 +28,13 @@ export function registerTools(server: McpServer) {
         'get-gameweek-fixtures',
         { gameweekId: z.number() },
         getGameweekFixtures
+    );
+    server.tool(
+        'get-top-scorers',
+        { 
+            limit: z.number().optional().default(10),
+            position: z.string().optional()
+        },
+        getTopScorers
     );
 }

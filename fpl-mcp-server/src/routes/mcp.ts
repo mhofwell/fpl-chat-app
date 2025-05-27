@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { getMcpServer, createTransport, getTransport } from '../lib/mcp-server';
+import { getMcpServer, createTransport, getTransport, transports } from '../lib/mcp-server';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'crypto';
 
 const router = Router();
 
@@ -18,14 +19,33 @@ router.post('/', async (req: Request, res: Response) => {
         if (!sessionId && isInitializeRequest(req.body)) {
             console.log('Processing initialization request');
             
-            // Create new transport for new session
-            transport = await createTransport();
+            // Create new transport for new session (following SDK pattern)
+            const generatedSessionId = randomUUID();
+            console.log(`Generated session ID: ${generatedSessionId}`);
             
-            // Connect to the shared server instance
+            transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => generatedSessionId,
+                onsessioninitialized: (sessionId) => {
+                    // Store the transport by session ID
+                    transports[sessionId] = transport!;
+                    console.log(`Session initialized with ID: ${sessionId}`);
+                    // Set the session ID header
+                    res.setHeader('mcp-session-id', sessionId);
+                }
+            });
+
+            // Clean up transport when closed
+            transport.onclose = () => {
+                if (transport!.sessionId) {
+                    delete transports[transport!.sessionId];
+                    console.log(`Session ${transport!.sessionId} closed and cleaned up`);
+                }
+            };
+            
+            // Create a new server instance for this session
             const server = getMcpServer();
             await server.connect(transport);
-            
-            // The transport will set its session ID during handleRequest
+            console.log(`Transport connected, sessionId: ${transport.sessionId}`);
         } else if (sessionId) {
             // Try to get existing transport
             transport = getTransport(sessionId);
@@ -56,7 +76,15 @@ router.post('/', async (req: Request, res: Response) => {
         }
         
         // Handle the request
+        console.log(`About to handle request, transport.sessionId: ${transport.sessionId}`);
         await transport.handleRequest(req, res, req.body);
+        console.log(`After handling request, transport.sessionId: ${transport.sessionId}`);
+        
+        // For initialization requests, log the session ID that was created
+        if (!sessionId && isInitializeRequest(req.body)) {
+            console.log(`New session request completed. Transport sessionId: ${transport.sessionId}`);
+            console.log(`Response headers being sent:`, res.getHeaders());
+        }
     } catch (error) {
         console.error('Error handling MCP request:', error);
 
