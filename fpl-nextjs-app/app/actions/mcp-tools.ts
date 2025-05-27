@@ -102,7 +102,7 @@ export async function initializeMcpSession(retryCount = 3): Promise<string | und
  */
 async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
     const MCP_SERVER_URL =
-        process.env.EXPRESS_MCP_SERVER_PRIVATE || 'http://localhost:3001';
+        `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT}` || 'http://localhost:3001';
     const TIMEOUT_MS = 10000; // 10 second timeout
 
     try {
