@@ -143,24 +143,38 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
                 JSON.stringify(params.arguments)
             );
 
-            const responseText = await response.text();
-            console.log(`Raw response: ${responseText}`);
+            console.log(`Response status: ${response.status}`);
+            console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+            console.log(`Content-Type: ${response.headers.get('content-type')}`);
 
-            let responseData;
-
+            // For tool calls, we expect the MCP server to return actual data, not just handle the request
+            // The issue might be that we're not getting the actual tool result back
+            
             try {
-                responseData = JSON.parse(responseText);
-                console.log(`Parsed response: ${JSON.stringify(responseData)}`);
-            } catch (parseError) {
-                // If response is not valid JSON, use the raw text
-                console.error(`Failed to parse JSON response: ${parseError}`);
-                if (!response.ok) {
-                    throw new Error(
-                        `MCP server responded with status ${response.status}: ${responseText}`
-                    );
+                const responseText = await response.text();
+                console.log(`Raw response length: ${responseText.length}`);
+                console.log(`Raw response (first 500 chars): ${responseText.substring(0, 500)}`);
+
+                let responseData;
+
+                try {
+                    responseData = JSON.parse(responseText);
+                    console.log(`Parsed response: ${JSON.stringify(responseData)}`);
+                } catch (parseError) {
+                    console.error(`Failed to parse JSON response: ${parseError}`);
+                    console.error(`Response text: ${responseText}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(
+                            `MCP server responded with status ${response.status}: ${responseText}`
+                        );
+                    }
+                    // For SSE responses, we might need to parse differently
+                    responseData = { content: [{ text: responseText }] };
                 }
-                // For non-JSON successful responses (should be rare)
-                responseData = { content: [{ text: responseText }] };
+            } catch (textError) {
+                console.error(`Error reading response text: ${textError}`);
+                throw new Error(`Failed to read response: ${textError instanceof Error ? textError.message : String(textError)}`);
             }
 
             // Check for JSON-RPC error format
