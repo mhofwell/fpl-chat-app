@@ -248,13 +248,18 @@ export async function* streamChatResponse(
     message: string,
     mcpSessionId?: string
 ) {
-    let sessionId: string;
-
     try {
         console.log('Starting streamChatResponse with:', { message, mcpSessionId });
         
         // Ensure we have a valid MCP session
-        sessionId = await ensureMcpSession(mcpSessionId);
+        let sessionId: string;
+        try {
+            sessionId = await ensureMcpSession(mcpSessionId);
+        } catch (error) {
+            console.error('Failed to establish MCP session:', error);
+            yield { type: 'error' as const, content: 'Failed to connect to FPL data service. Please try again.' };
+            return;
+        }
         
         // Yield session info if it's different from what was passed
         if (sessionId !== mcpSessionId) {
@@ -262,18 +267,32 @@ export async function* streamChatResponse(
         }
         
         // Get available tools
-        const toolsForClaude = await getToolsForClaude(sessionId);
+        let toolsForClaude: any[];
+        try {
+            toolsForClaude = await getToolsForClaude(sessionId);
+        } catch (error) {
+            console.error('Failed to get tools:', error);
+            // Use fallback tools if we can't get them from the server
+            toolsForClaude = getFallbackTools();
+        }
 
         // Call Claude with tools enabled and streaming
-        const stream = await anthropic.messages.create({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 1000,
-            system: CLAUDE_SYSTEM_PROMPT,
-            messages: [{ role: 'user' as const, content: message }],
-            stream: true,
-            tools: toolsForClaude,
-            tool_choice: { type: 'auto' },
-        });
+        let stream;
+        try {
+            stream = await anthropic.messages.create({
+                model: 'claude-3-5-sonnet-20241022',
+                max_tokens: 1000,
+                system: CLAUDE_SYSTEM_PROMPT,
+                messages: [{ role: 'user' as const, content: message }],
+                stream: true,
+                tools: toolsForClaude,
+                tool_choice: { type: 'auto' },
+            });
+        } catch (error) {
+            console.error('Failed to create Claude stream:', error);
+            yield { type: 'error' as const, content: 'Failed to process your request. Please try again.' };
+            return;
+        }
 
         // Handle streaming response
         const toolCalls: any[] = [];

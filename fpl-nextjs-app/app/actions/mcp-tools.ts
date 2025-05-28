@@ -5,11 +5,20 @@ import { createClient } from '@/utils/supabase/server';
 
 // Re-export the new MCP client functions for backward compatibility
 export { 
-    getMcpClient as initializeMcpSession,
     callMcpTool,
     listMcpTools,
     closeMcpClient
 } from '@/lib/mcp/client';
+
+import { getMcpClient } from '@/lib/mcp/client';
+
+/**
+ * Initialize MCP session and return session ID for backward compatibility
+ */
+export async function initializeMcpSession(sessionId?: string): Promise<string> {
+    const { sessionId: newSessionId } = await getMcpClient(sessionId);
+    return newSessionId;
+}
 
 export async function getUserChats() {
     const supabase = await createClient();
