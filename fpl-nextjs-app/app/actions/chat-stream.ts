@@ -2,15 +2,48 @@
 'use server';
 
 import { Anthropic } from '@anthropic-ai/sdk';
-import { ToolUseBlock } from '@anthropic-ai/sdk/resources';
-import { callMcpTool } from './mcp-tools';
+import { getMcpClient, callMcpTool as mcpCallTool, listMcpTools } from '@/lib/mcp/client';
 
 const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
-// Use only the tools that actually exist on the MCP server
-const toolsForClaude = [
+// Cache for tools schema to avoid repeated fetches
+let cachedTools: any[] | null = null;
+
+/**
+ * Get tools schema from MCP server
+ */
+async function getToolsForClaude(sessionId?: string): Promise<any[]> {
+    if (cachedTools) return cachedTools;
+    
+    try {
+        const tools = await listMcpTools(sessionId);
+        
+        // Convert MCP tool format to Claude's expected format
+        cachedTools = tools.map(tool => ({
+            name: tool.name,
+            description: tool.description || `Tool: ${tool.name}`,
+            input_schema: tool.inputSchema || {
+                type: 'object' as const,
+                properties: {},
+                required: [],
+            },
+        }));
+        
+        return cachedTools;
+    } catch (error) {
+        console.error('Failed to fetch tools from MCP server:', error);
+        // Fallback to hardcoded tools if MCP server is unavailable
+        return getFallbackTools();
+    }
+}
+
+/**
+ * Fallback tools definition in case MCP server is unavailable
+ */
+function getFallbackTools() {
+    return [
     {
         name: 'get-player',
         description: 'Get information about an FPL player',
@@ -105,9 +138,10 @@ const toolsForClaude = [
             required: [],
         },
     },
-];
+    ];
+}
 
-// System prompt matching the actual available tools
+// System prompt for Claude
 const CLAUDE_SYSTEM_PROMPT = `You are a Fantasy Premier League (FPL) expert assistant. Help users with FPL-related queries using your extensive knowledge and the available tools.
 When asked about players, teams, fixtures, or gameweeks, use the appropriate tools to get accurate data.
 Keep responses concise but informative.
@@ -135,36 +169,35 @@ RESPONSE GUIDELINES:
 Remember that you're advising on Fantasy Premier League (FPL), which is a fantasy sports game based on the English Premier League.`;
 
 /**
- * Simple MCP session management
+ * Initialize or verify MCP session
  */
-async function getOrCreateValidSession(mcpSessionId?: string): Promise<string | undefined> {
-    if (mcpSessionId) {
-        return mcpSessionId;
+async function ensureMcpSession(sessionId?: string): Promise<string> {
+    try {
+        const { sessionId: activeSessionId } = await getMcpClient(sessionId);
+        return activeSessionId;
+    } catch (error) {
+        console.error('Failed to ensure MCP session:', error);
+        throw new Error('Failed to connect to FPL data service');
     }
-    
-    // Initialize new session using the existing function
-    const { initializeMcpSession } = await import('./mcp-tools');
-    return await initializeMcpSession();
 }
 
 /**
- * Handle calling tools with robust error handling
+ * Handle tool calls through MCP client
  */
 async function handleToolCalls(
     toolCalls: Array<{ id: string; name: string; input: Record<string, any> }>,
-    mcpSessionId: string
+    sessionId: string
 ): Promise<{
     results: Array<{
         toolCall: { id: string; name: string; input: Record<string, any> };
         result: any;
     }>;
-    newSessionId?: string;
+    sessionId: string;
     errors: Array<{
         toolCall: { id: string; name: string; input: Record<string, any> };
         error: string;
     }>;
 }> {
-    let updatedSessionId = mcpSessionId;
     const results: Array<{
         toolCall: { id: string; name: string; input: Record<string, any> };
         result: any;
@@ -173,73 +206,63 @@ async function handleToolCalls(
         toolCall: { id: string; name: string; input: Record<string, any> };
         error: string;
     }> = [];
+    
+    let currentSessionId = sessionId;
 
-    // Process each tool call with timeout
-    await Promise.all(
-        toolCalls.map(async (toolCall) => {
-            try {
-                // Add timeout wrapper
-                const timeoutPromise = new Promise<never>((_, reject) => {
-                    setTimeout(() => reject(new Error('Tool call timeout')), 10000);
-                });
-
-                const callPromise = callMcpTool(
-                    toolCall.name,
-                    toolCall.input,
-                    updatedSessionId
-                );
-
-                const result = await Promise.race([callPromise, timeoutPromise]);
-
-                // Update the session ID if we received a new one
-                if (result.sessionId) {
-                    updatedSessionId = result.sessionId;
-                }
-
-                if (result.success) {
-                    results.push({
-                        toolCall,
-                        result: result.result,
-                    });
-                } else {
-                    errors.push({
-                        toolCall,
-                        error: result.error || 'Unknown error',
-                    });
-                }
-            } catch (error) {
-                console.error('Tool call error:', error);
+    // Process tool calls sequentially to maintain session consistency
+    for (const toolCall of toolCalls) {
+        try {
+            const response = await mcpCallTool(
+                toolCall.name,
+                toolCall.input,
+                currentSessionId
+            );
+            
+            // Update session ID if changed
+            currentSessionId = response.sessionId;
+            
+            if (response.error) {
                 errors.push({
                     toolCall,
-                    error: error instanceof Error ? error.message : 'Unknown error',
+                    error: response.error,
+                });
+            } else {
+                results.push({
+                    toolCall,
+                    result: response.result,
                 });
             }
-        })
-    );
+        } catch (error) {
+            console.error('Tool call error:', error);
+            errors.push({
+                toolCall,
+                error: error instanceof Error ? error.message : 'Unknown error',
+            });
+        }
+    }
 
-    return { results, newSessionId: updatedSessionId, errors };
+    return { results, sessionId: currentSessionId, errors };
 }
 
 export async function* streamChatResponse(
     message: string,
     mcpSessionId?: string
 ) {
-    let sessionId = mcpSessionId;
+    let sessionId: string;
 
     try {
         console.log('Starting streamChatResponse with:', { message, mcpSessionId });
         
-        // Get a valid MCP session ID
-        sessionId = await getOrCreateValidSession(mcpSessionId);
-        if (!sessionId) {
-            yield { type: 'error', content: 'Failed to establish a connection with the FPL data service. Please try again later.' };
-            return;
+        // Ensure we have a valid MCP session
+        sessionId = await ensureMcpSession(mcpSessionId);
+        
+        // Yield session info if it's different from what was passed
+        if (sessionId !== mcpSessionId) {
+            yield { type: 'session' as const, sessionId };
         }
-
-        // Yield session info if it's a new session
-        if (!mcpSessionId) {
-            yield { type: 'session', sessionId };
-        }
+        
+        // Get available tools
+        const toolsForClaude = await getToolsForClaude(sessionId);
 
         // Call Claude with tools enabled and streaming
         const stream = await anthropic.messages.create({
@@ -276,8 +299,8 @@ export async function* streamChatResponse(
         if (toolCalls.length > 0) {
             console.log('Processing tool calls:', toolCalls.length);
             
-            // Process tool calls with proper error handling
-            const { results, newSessionId, errors } = await handleToolCalls(
+            // Process tool calls
+            const { results, sessionId: updatedSessionId, errors } = await handleToolCalls(
                 toolCalls.map((tool) => ({
                     id: tool.id,
                     name: tool.name,
@@ -286,8 +309,8 @@ export async function* streamChatResponse(
                 sessionId
             );
 
-            // Update the session ID if needed
-            const updatedSessionId = newSessionId || sessionId;
+            // Update our local session ID
+            sessionId = updatedSessionId;
 
             // Format the tool results for the follow-up message
             const toolResults = [
@@ -340,11 +363,12 @@ export async function* streamChatResponse(
                 }
             }
             
-            // Update session ID
-            sessionId = updatedSessionId;
         }
-
-        return { sessionId };
+        
+        // Yield final session ID if it changed
+        if (sessionId !== mcpSessionId) {
+            yield { type: 'session' as const, sessionId };
+        }
     } catch (error) {
         console.error('Error processing message with Claude:', error);
         yield { type: 'error', content: 'Sorry, I encountered an error while processing your question.' };

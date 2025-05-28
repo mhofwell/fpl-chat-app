@@ -8,7 +8,7 @@ import { TextBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources';
 import { createClient } from '@/utils/supabase/server';
 import { v4 as uuidv4 } from 'uuid';
 //
-import { callMcpTool } from './mcp-tools';
+import { callMcpTool } from '@/lib/mcp/client';
 
 const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY || '',
@@ -197,7 +197,8 @@ export async function processUserMessage(
                     return {
                         type: 'tool_result' as const,
                         tool_use_id: toolCall.id,
-                        content: result.success ? result.result?.[0]?.text || 'No data returned' : `Error: ${result.error}`
+                        content: result.error ? `Error: ${result.error}` : 
+                            (result.result?.[0]?.text || JSON.stringify(result.result) || 'No data returned')
                     };
                 })
             );

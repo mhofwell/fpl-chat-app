@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 
 const router = Router();
 
-// Handle POST requests for MCP communication with session management
+// Handle POST requests for MCP messages (main endpoint)
 router.post('/', async (req: Request, res: Response) => {
     try {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -68,81 +68,10 @@ router.post('/', async (req: Request, res: Response) => {
                 return;
             }
             
-            // For tool invocation, we need to handle the response differently
-            console.log(`About to handle request, transport.sessionId: ${transport.sessionId}`);
-            
-            // Check if this is a tool invocation that needs JSON response
-            const requestBody = req.body as any;
-            if (requestBody.method === 'invokeTool') {
-                console.log(`Handling tool invocation: ${requestBody.params?.name}`);
-                
-                try {
-                    // Call the tool handler directly based on tool name
-                    const toolName = requestBody.params.name;
-                    const toolArgs = requestBody.params.arguments || {};
-                    
-                    let toolResult;
-                    
-                    // Import and call the appropriate tool
-                    switch (toolName) {
-                        case 'get-top-scorers':
-                            const { getTopScorers } = await import('../tools/fpl/top-scorers');
-                            toolResult = await getTopScorers(toolArgs, {});
-                            break;
-                        case 'get-player':
-                            const { getPlayer } = await import('../tools/fpl/player');
-                            toolResult = await getPlayer(toolArgs, {});
-                            break;
-                        case 'get-team':
-                            const { getTeam } = await import('../tools/fpl/team');
-                            toolResult = await getTeam(toolArgs, {});
-                            break;
-                        case 'get-current-gameweek':
-                            const { getCurrentGameweek } = await import('../tools/fpl/gameweek');
-                            toolResult = await getCurrentGameweek(toolArgs, {});
-                            break;
-                        case 'get-gameweek-fixtures':
-                            const { getGameweekFixtures } = await import('../tools/fpl/fixtures');
-                            toolResult = await getGameweekFixtures(toolArgs, {});
-                            break;
-                        case 'echo':
-                            const { echoMessage } = await import('../tools/echo');
-                            toolResult = await echoMessage(toolArgs, {});
-                            break;
-                        default:
-                            throw new Error(`Unknown tool: ${toolName}`);
-                    }
-                    
-                    console.log(`Tool result:`, JSON.stringify(toolResult));
-                    
-                    // Return proper JSON-RPC response
-                    res.setHeader('Content-Type', 'application/json');
-                    res.json({
-                        jsonrpc: '2.0',
-                        result: toolResult,
-                        id: requestBody.id
-                    });
-                    
-                    console.log(`Tool invocation handled successfully`);
-                } catch (error) {
-                    console.error('Error calling tool:', error);
-                    res.setHeader('Content-Type', 'application/json');
-                    res.status(500).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32603,
-                            message: 'Internal error',
-                            data: error instanceof Error ? error.message : String(error)
-                        },
-                        id: requestBody.id
-                    });
-                }
-            } else {
-                // Handle other requests normally (SSE)
-                await transport.handleRequest(req, res, req.body);
-            }
-            
-            console.log(`After handling request, transport.sessionId: ${transport.sessionId}`);
+            // Let the transport handle the request
+            // The StreamableHTTPServerTransport will handle both regular JSON-RPC
+            // and SSE upgrade requests appropriately
+            await transport.handleRequest(req, res, req.body);
         } else {
             // Not an initialization request and no session ID
             res.status(400).json({
@@ -172,7 +101,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 });
 
-// Handle GET requests for server-to-client events (SSE)
+// Handle GET requests for SSE (Server-Sent Events) streams
 router.get('/', async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     
@@ -181,7 +110,7 @@ router.get('/', async (req: Request, res: Response) => {
             jsonrpc: '2.0',
             error: {
                 code: -32000,
-                message: 'Missing session ID',
+                message: 'Missing session ID for SSE stream',
             },
             id: null,
         });
@@ -194,7 +123,7 @@ router.get('/', async (req: Request, res: Response) => {
             jsonrpc: '2.0',
             error: {
                 code: -32001,
-                message: 'Invalid session ID',
+                message: 'Invalid session ID - session may have expired',
             },
             id: null,
         });
@@ -202,9 +131,10 @@ router.get('/', async (req: Request, res: Response) => {
     }
     
     try {
+        // The transport will handle setting up the SSE stream
         await transport.handleRequest(req, res);
     } catch (error) {
-        console.error('Error handling SSE request:', error);
+        console.error('Error handling SSE stream request:', error);
         if (!res.headersSent) {
             res.status(500).json({
                 jsonrpc: '2.0',

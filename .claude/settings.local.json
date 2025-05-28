@@ -10,7 +10,9 @@
       "Bash(tsc --noEmit)",
       "WebFetch(domain:github.com)",
       "Bash(git checkout:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:modelcontextprotocol.io)"
     ],
     "deny": []
   }
