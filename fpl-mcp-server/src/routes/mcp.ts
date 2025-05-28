@@ -77,20 +77,41 @@ router.post('/', async (req: Request, res: Response) => {
                 console.log(`Handling tool invocation: ${requestBody.params?.name}`);
                 
                 try {
-                    // Get the MCP server and call the tool directly
-                    const server = getMcpServer();
+                    // Call the tool handler directly based on tool name
+                    const toolName = requestBody.params.name;
+                    const toolArgs = requestBody.params.arguments || {};
                     
-                    // Call the tool through the server's tool system
-                    const toolResult = await server.request(
-                        {
-                            method: 'tools/call',
-                            params: {
-                                name: requestBody.params.name,
-                                arguments: requestBody.params.arguments || {}
-                            }
-                        },
-                        transport
-                    );
+                    let toolResult;
+                    
+                    // Import and call the appropriate tool
+                    switch (toolName) {
+                        case 'get-top-scorers':
+                            const { getTopScorers } = await import('../tools/fpl/top-scorers');
+                            toolResult = await getTopScorers(toolArgs);
+                            break;
+                        case 'get-player':
+                            const { getPlayer } = await import('../tools/fpl/player');
+                            toolResult = await getPlayer(toolArgs);
+                            break;
+                        case 'get-team':
+                            const { getTeam } = await import('../tools/fpl/team');
+                            toolResult = await getTeam(toolArgs);
+                            break;
+                        case 'get-current-gameweek':
+                            const { getCurrentGameweek } = await import('../tools/fpl/gameweek');
+                            toolResult = await getCurrentGameweek(toolArgs);
+                            break;
+                        case 'get-gameweek-fixtures':
+                            const { getGameweekFixtures } = await import('../tools/fpl/fixtures');
+                            toolResult = await getGameweekFixtures(toolArgs);
+                            break;
+                        case 'echo':
+                            const { echoMessage } = await import('../tools/echo');
+                            toolResult = await echoMessage(toolArgs);
+                            break;
+                        default:
+                            throw new Error(`Unknown tool: ${toolName}`);
+                    }
                     
                     console.log(`Tool result:`, JSON.stringify(toolResult));
                     
