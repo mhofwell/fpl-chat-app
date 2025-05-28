@@ -19,14 +19,19 @@ export async function* streamChatResponse(
         
         // Initialize MCP session if not provided
         if (!sessionId) {
+            console.log('About to import and call initializeMcpSession');
             const { initializeMcpSession } = await import('./mcp-tools');
+            console.log('Imported initializeMcpSession, now calling it');
             sessionId = await initializeMcpSession();
+            console.log('initializeMcpSession returned:', sessionId);
             
             if (!sessionId) {
+                console.log('No session ID returned, yielding error');
                 yield { type: 'error', content: 'Failed to initialize MCP session. Please try again.' };
                 return;
             }
             
+            console.log('Session ID obtained, yielding session info');
             // Return the session ID to the client
             yield { type: 'session', sessionId };
         }

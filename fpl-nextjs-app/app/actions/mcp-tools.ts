@@ -22,13 +22,18 @@ type ToolResult = {
  * Initialize a new MCP session
  */
 export async function initializeMcpSession(): Promise<string | undefined> {
-    const MCP_SERVER_URL =
-        `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT}` || 'http://localhost:3001';
+    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE 
+        ? `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT || '3001'}`
+        : 'http://localhost:3001';
 
     try {
         console.log('Initializing MCP session...');
+        console.log('MCP_SERVER_URL:', MCP_SERVER_URL);
         
-        // Send an initialization request
+        // Send an initialization request with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
         const response = await fetch(`${MCP_SERVER_URL}/mcp`, {
             method: 'POST',
             headers: { 
@@ -51,7 +56,10 @@ export async function initializeMcpSession(): Promise<string | undefined> {
                 },
                 id: 1,
             }),
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         console.log('Initialize response status:', response.status);
         console.log('Initialize response headers:', Object.fromEntries(response.headers.entries()));
@@ -76,6 +84,13 @@ export async function initializeMcpSession(): Promise<string | undefined> {
         return sessionId;
     } catch (error) {
         console.error('Error initializing MCP session:', error);
+        if (error instanceof Error) {
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            if (error.name === 'AbortError') {
+                console.error('MCP session initialization timed out after 5 seconds');
+            }
+        }
         return undefined;
     }
 }
@@ -84,8 +99,9 @@ export async function initializeMcpSession(): Promise<string | undefined> {
  * Server-side MCP client that communicates with the MCP Express server
  */
 async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
-    const MCP_SERVER_URL =
-        `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT}` || 'http://localhost:3001';
+    const MCP_SERVER_URL = process.env.EXPRESS_MCP_SERVER_PRIVATE 
+        ? `http://${process.env.EXPRESS_MCP_SERVER_PRIVATE}:${process.env.EXPRESS_MCP_SERVER_PORT || '3001'}`
+        : 'http://localhost:3001';
     const TIMEOUT_MS = 10000; // 10 second timeout
 
     try {

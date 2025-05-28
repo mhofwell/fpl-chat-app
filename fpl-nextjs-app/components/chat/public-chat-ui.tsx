@@ -40,7 +40,6 @@ export default function ChatUI() {
 
         try {
             // Add empty assistant message for streaming
-            const assistantMessageIndex = messages.length + 1;
             setMessages((prev) => [
                 ...prev,
                 {
@@ -58,10 +57,13 @@ export default function ChatUI() {
                     fullContent += chunk.content;
                     setMessages((prev) => {
                         const newMessages = [...prev];
-                        newMessages[assistantMessageIndex] = {
-                            role: 'assistant',
-                            content: fullContent,
-                        };
+                        // Safely update the last message (which should be the assistant message)
+                        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+                            newMessages[newMessages.length - 1] = {
+                                role: 'assistant',
+                                content: fullContent,
+                            };
+                        }
                         return newMessages;
                     });
                 } else if (chunk.type === 'session') {
@@ -72,20 +74,26 @@ export default function ChatUI() {
                     fullContent += `\n\n_Checking ${chunk.toolName}..._\n\n`;
                     setMessages((prev) => {
                         const newMessages = [...prev];
-                        newMessages[assistantMessageIndex] = {
-                            role: 'assistant',
-                            content: fullContent,
-                        };
+                        // Safely update the last message (which should be the assistant message)
+                        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+                            newMessages[newMessages.length - 1] = {
+                                role: 'assistant',
+                                content: fullContent,
+                            };
+                        }
                         return newMessages;
                     });
                 } else if (chunk.type === 'error') {
                     fullContent = chunk.content || 'An error occurred';
                     setMessages((prev) => {
                         const newMessages = [...prev];
-                        newMessages[assistantMessageIndex] = {
-                            role: 'assistant',
-                            content: fullContent,
-                        };
+                        // Safely update the last message (which should be the assistant message)
+                        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+                            newMessages[newMessages.length - 1] = {
+                                role: 'assistant',
+                                content: fullContent,
+                            };
+                        }
                         return newMessages;
                     });
                 }
