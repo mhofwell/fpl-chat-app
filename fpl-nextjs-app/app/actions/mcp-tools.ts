@@ -31,10 +31,11 @@ export async function initializeMcpSession(): Promise<string | undefined> {
         console.log('MCP_SERVER_URL:', MCP_SERVER_URL);
         
         // Send an initialization request with timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Request timeout')), 5000);
+        });
         
-        const response = await fetch(`${MCP_SERVER_URL}/mcp`, {
+        const fetchPromise = fetch(`${MCP_SERVER_URL}/mcp`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -55,11 +56,10 @@ export async function initializeMcpSession(): Promise<string | undefined> {
                     },
                 },
                 id: 1,
-            }),
-            signal: controller.signal
+            })
         });
         
-        clearTimeout(timeoutId);
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
 
         console.log('Initialize response status:', response.status);
         console.log('Initialize response headers:', Object.fromEntries(response.headers.entries()));
@@ -87,7 +87,7 @@ export async function initializeMcpSession(): Promise<string | undefined> {
         if (error instanceof Error) {
             console.error('Error name:', error.name);
             console.error('Error message:', error.message);
-            if (error.name === 'AbortError') {
+            if (error.message === 'Request timeout') {
                 console.error('MCP session initialization timed out after 5 seconds');
             }
         }
