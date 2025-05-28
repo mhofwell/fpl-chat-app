@@ -219,7 +219,11 @@ async function handleToolCalls(
                 currentSessionId
             );
             
-            console.log(`Tool response for ${toolCall.name}:`, response);
+            console.log(`Tool response for ${toolCall.name}:`, {
+                hasError: !!response.error,
+                resultType: Array.isArray(response.result) ? 'array' : typeof response.result,
+                resultLength: Array.isArray(response.result) ? response.result.length : undefined
+            });
             
             // Update session ID if changed
             currentSessionId = response.sessionId;
@@ -355,7 +359,8 @@ export async function* streamChatResponse(
                         content = JSON.stringify(result);
                     }
                     
-                    console.log(`Tool result for ${toolCall.name}:`, content.substring(0, 100) + '...');
+                    console.log(`Tool result for ${toolCall.name} (length: ${content.length}):`);
+                    console.log(content.substring(0, 200) + (content.length > 200 ? '...' : ''));
                     
                     return {
                         type: 'tool_result' as const,

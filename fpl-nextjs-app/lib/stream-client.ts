@@ -48,8 +48,10 @@ export async function* streamChatClient(
                 for (const line of lines) {
                     if (line.trim()) {
                         try {
-                            const chunk = JSON.parse(line) as StreamChunk;
-                            yield chunk;
+                            const chunk = JSON.parse(line);
+                            // Skip 'done' signals
+                            if (chunk.type === 'done') continue;
+                            yield chunk as StreamChunk;
                         } catch (parseError) {
                             console.error('Failed to parse chunk:', parseError, line);
                         }

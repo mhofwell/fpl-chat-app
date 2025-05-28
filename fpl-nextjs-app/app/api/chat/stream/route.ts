@@ -19,7 +19,17 @@ export async function POST(request: NextRequest) {
                         // Encode each chunk as JSON followed by newline
                         const data = JSON.stringify(chunk) + '\n';
                         controller.enqueue(encoder.encode(data));
+                        
+                        // Force flush for text chunks
+                        if (chunk.type === 'text') {
+                            await new Promise(resolve => setTimeout(resolve, 10));
+                        }
                     }
+                    
+                    // Send a final completion signal
+                    const endChunk = JSON.stringify({ type: 'done' }) + '\n';
+                    controller.enqueue(encoder.encode(endChunk));
+                    
                     controller.close();
                 } catch (error) {
                     console.error('Stream processing error:', error);
