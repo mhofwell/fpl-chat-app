@@ -76,12 +76,46 @@ router.post('/', async (req: Request, res: Response) => {
             if (requestBody.method === 'invokeTool') {
                 console.log(`Handling tool invocation: ${requestBody.params?.name}`);
                 
-                // Set content type to JSON for tool responses
-                res.setHeader('Content-Type', 'application/json');
-                
-                // Handle the tool request and capture the response
-                await transport.handleRequest(req, res, req.body);
-                console.log(`Tool invocation handled`);
+                try {
+                    // Get the MCP server and call the tool directly
+                    const server = getMcpServer();
+                    
+                    // Call the tool through the server's tool system
+                    const toolResult = await server.request(
+                        {
+                            method: 'tools/call',
+                            params: {
+                                name: requestBody.params.name,
+                                arguments: requestBody.params.arguments || {}
+                            }
+                        },
+                        transport
+                    );
+                    
+                    console.log(`Tool result:`, JSON.stringify(toolResult));
+                    
+                    // Return proper JSON-RPC response
+                    res.setHeader('Content-Type', 'application/json');
+                    res.json({
+                        jsonrpc: '2.0',
+                        result: toolResult,
+                        id: requestBody.id
+                    });
+                    
+                    console.log(`Tool invocation handled successfully`);
+                } catch (error) {
+                    console.error('Error calling tool:', error);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.status(500).json({
+                        jsonrpc: '2.0',
+                        error: {
+                            code: -32603,
+                            message: 'Internal error',
+                            data: error instanceof Error ? error.message : String(error)
+                        },
+                        id: requestBody.id
+                    });
+                }
             } else {
                 // Handle other requests normally (SSE)
                 await transport.handleRequest(req, res, req.body);
