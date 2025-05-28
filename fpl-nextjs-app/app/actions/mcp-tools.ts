@@ -150,12 +150,12 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
             // For tool calls, we expect the MCP server to return actual data, not just handle the request
             // The issue might be that we're not getting the actual tool result back
             
+            let responseData;
+            
             try {
                 const responseText = await response.text();
                 console.log(`Raw response length: ${responseText.length}`);
                 console.log(`Raw response (first 500 chars): ${responseText.substring(0, 500)}`);
-
-                let responseData;
 
                 try {
                     responseData = JSON.parse(responseText);
@@ -186,7 +186,7 @@ async function callMcpServerTool(params: ToolCallParams): Promise<ToolResult> {
 
             if (!response.ok) {
                 throw new Error(
-                    `MCP server responded with status ${response.status}: ${responseText}`
+                    `MCP server responded with status ${response.status}`
                 );
             }
 
