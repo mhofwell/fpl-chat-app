@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { processUserMessage } from '@/app/actions/chat';
-import { streamChatResponse } from '@/app/actions/chat-stream';
+import { streamChatClient } from '@/lib/stream-client';
 import { initializeMcpSession } from '@/app/actions/mcp-tools';
 
 interface Message {
@@ -49,7 +49,7 @@ export default function ChatUI() {
             ]);
 
             // Stream the response
-            const generator = streamChatResponse(userMessage.content, mcpSessionId);
+            const generator = streamChatClient(userMessage.content, mcpSessionId);
             let fullContent = '';
             
             for await (const chunk of generator) {
