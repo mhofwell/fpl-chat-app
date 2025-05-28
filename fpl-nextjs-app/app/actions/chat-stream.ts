@@ -9,285 +9,128 @@ const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
-// Use the same tool definitions from the working chat.ts you provided
+// Use only the tools that actually exist on the MCP server
 const toolsForClaude = [
     {
         name: 'get-player',
-        description:
-            'Retrieves detailed information about a specific FPL player using their name, FPL ID, or other criteria. Can also filter by team and position.',
+        description: 'Get information about an FPL player',
         input_schema: {
             type: 'object' as const,
             properties: {
-                playerQuery: {
-                    type: 'string',
-                    description:
-                        "Player's name (full or partial), FPL ID, or a descriptive query.",
-                },
-                teamId: {
+                playerId: {
                     type: 'number',
-                    description: 'Optional: FPL ID of the team to filter by.',
+                    description: 'ID of the player',
                 },
-                teamName: {
+                playerName: {
                     type: 'string',
-                    description:
-                        'Optional: Name of the team to filter by (supports fuzzy matching if teamId is not provided).',
-                },
-                position: {
-                    type: 'string',
-                    description:
-                        'Optional: Player position to filter by (e.g., GKP, DEF, MID, FWD).',
+                    description: 'Name of the player to search for',
                 },
                 includeRawData: {
                     type: 'boolean',
-                    description:
-                        'Optional: Whether to include raw JSON data in the response. Defaults to false.',
+                    description: 'Whether to include raw JSON data',
                 },
             },
-            required: ['playerQuery'],
+            required: [],
         },
     },
     {
         name: 'get-team',
-        description:
-            'Retrieves detailed information about a specific FPL team using its name or FPL ID.',
+        description: 'Get information about an FPL team',
         input_schema: {
             type: 'object' as const,
             properties: {
-                teamQuery: {
-                    type: 'string',
-                    description:
-                        "Team's name (full or partial, supports fuzzy matching) or exact FPL team ID.",
-                },
-                includeFixtures: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Include upcoming fixtures for the team. Defaults to true.',
-                },
-                includePlayers: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Include a list of key players for the team. Defaults to false.',
-                },
-                includeRawData: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Whether to include raw JSON data in the response. Defaults to false.',
+                teamId: {
+                    type: 'number',
+                    description: 'ID of the team',
                 },
             },
-            required: ['teamQuery'],
+            required: ['teamId'],
         },
     },
     {
         name: 'get-gameweek',
-        description:
-            'Retrieves information about an FPL gameweek, specified by ID or type (current, next, previous). Can include fixtures.',
+        description: 'Get information about an FPL gameweek',
         input_schema: {
             type: 'object' as const,
             properties: {
                 gameweekId: {
                     type: 'number',
-                    description: 'Optional: ID of the gameweek to retrieve.',
+                    description: 'ID of the gameweek',
                 },
-                type: {
-                    type: 'string',
-                    enum: ['current', 'next', 'previous'],
-                    description:
-                        'Optional: Specify gameweek by type (current, next, or previous).',
+                getCurrent: {
+                    type: 'boolean',
+                    description: 'Get current gameweek',
+                },
+                getNext: {
+                    type: 'boolean',
+                    description: 'Get next gameweek',
                 },
                 includeFixtures: {
                     type: 'boolean',
-                    description:
-                        'Optional: Whether to include fixtures for the gameweek. Defaults to true.',
-                },
-                includeRawData: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Whether to include raw JSON data in the response. Defaults to false.',
+                    description: 'Include fixtures in response',
                 },
             },
             required: [],
         },
     },
     {
-        name: 'search-players',
-        description:
-            'Searches for FPL players based on various criteria like name, team, position, price, points, and allows sorting.',
+        name: 'get-gameweek-fixtures',
+        description: 'Get fixtures for a specific gameweek',
         input_schema: {
             type: 'object' as const,
             properties: {
-                query: {
-                    type: 'string',
-                    description:
-                        "Optional: Player's name (partial match supported).",
+                gameweekId: {
+                    type: 'number',
+                    description: 'ID of the gameweek',
                 },
-                teamName: {
-                    type: 'string',
-                    description:
-                        'Optional: Team name to filter by (partial match supported).',
+            },
+            required: ['gameweekId'],
+        },
+    },
+    {
+        name: 'get-top-scorers',
+        description: 'Get the top goal scorers in the Premier League',
+        input_schema: {
+            type: 'object' as const,
+            properties: {
+                limit: {
+                    type: 'number',
+                    description: 'Number of top scorers to return (default: 10)',
                 },
                 position: {
                     type: 'string',
-                    enum: ['GKP', 'DEF', 'MID', 'FWD'],
-                    description: 'Optional: Filter by player position.',
-                },
-                minPrice: {
-                    type: 'number',
-                    description:
-                        'Optional: Minimum price (e.g., 5.5 for £5.5m).',
-                },
-                maxPrice: {
-                    type: 'number',
-                    description:
-                        'Optional: Maximum price (e.g., 10.0 for £10.0m).',
-                },
-                minTotalPoints: {
-                    type: 'integer',
-                    description: 'Optional: Minimum total points.',
-                },
-                sortBy: {
-                    type: 'string',
-                    enum: [
-                        'total_points_desc',
-                        'now_cost_asc',
-                        'now_cost_desc',
-                        'form_desc',
-                        'selected_by_percent_desc',
-                        'price_rise_desc',
-                        'price_rise_asc',
-                    ],
-                    description:
-                        "Optional: Stat to sort players by and direction. Defaults to 'total_points_desc'.",
-                },
-                limit: {
-                    type: 'integer',
-                    description:
-                        'Optional: Number of results to return. Defaults to 10.',
-                },
-                includeRawData: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Whether to include raw JSON data in the response. Defaults to false.',
+                    description: 'Filter by position (GKP, DEF, MID, FWD)',
                 },
             },
             required: [],
-        },
-    },
-    {
-        name: 'search-fixtures',
-        description:
-            'Searches for FPL fixtures based on criteria like team(s), gameweek, difficulty, and allows sorting. Can provide details for past matches.',
-        input_schema: {
-            type: 'object' as const,
-            properties: {
-                teamQuery: {
-                    type: 'string',
-                    description:
-                        "Optional: One or two team names (e.g., 'Arsenal', or 'Liverpool vs Man City'). Supports partial/fuzzy matching.",
-                },
-                gameweekId: {
-                    type: 'integer',
-                    description: 'Optional: Filter by a specific gameweek ID.',
-                },
-                difficultyMin: {
-                    type: 'integer',
-                    description:
-                        'Optional: Minimum FPL difficulty rating (1-5).',
-                },
-                difficultyMax: {
-                    type: 'integer',
-                    description:
-                        'Optional: Maximum FPL difficulty rating (1-5).',
-                },
-                sortBy: {
-                    type: 'string',
-                    enum: [
-                        'kickoff_time_asc',
-                        'kickoff_time_desc',
-                        'difficulty_desc',
-                        'difficulty_asc',
-                    ],
-                    description:
-                        "Optional: Sort order for the fixtures. Defaults to 'kickoff_time_asc'.",
-                },
-                includeDetails: {
-                    type: 'boolean',
-                    description:
-                        'Optional: If a single specific past match is found, include detailed stats. Defaults to true.',
-                },
-                limit: {
-                    type: 'integer',
-                    description:
-                        'Optional: Maximum number of fixtures to return. Defaults to 10.',
-                },
-                includeRawData: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Whether to include raw JSON data in the response. Defaults to false.',
-                },
-            },
-            required: [],
-        },
-    },
-    {
-        name: 'compare-entities',
-        description:
-            'Compares two FPL entities (players or teams) side-by-side on various metrics.',
-        input_schema: {
-            type: 'object' as const,
-            properties: {
-                entity1Query: {
-                    type: 'string',
-                    description: 'Name or FPL ID of the first player or team.',
-                },
-                entity2Query: {
-                    type: 'string',
-                    description: 'Name or FPL ID of the second player or team.',
-                },
-                entityType: {
-                    type: 'string',
-                    enum: ['player', 'team'],
-                    description:
-                        "The type of entities to compare ('player' or 'team').",
-                },
-                includeRawData: {
-                    type: 'boolean',
-                    description:
-                        'Optional: Whether to include raw JSON data in the response. Defaults to false.',
-                },
-            },
-            required: ['entity1Query', 'entity2Query', 'entityType'],
         },
     },
 ];
 
-// Use the same comprehensive system prompt
+// System prompt matching the actual available tools
 const CLAUDE_SYSTEM_PROMPT = `You are a Fantasy Premier League (FPL) expert assistant. Help users with FPL-related queries using your extensive knowledge and the available tools.
 When asked about players, teams, fixtures, or gameweeks, use the appropriate tools to get accurate data.
 Keep responses concise but informative.
 
 AVAILABLE TOOLS:
-- getPlayer: Retrieves detailed information about a specific FPL player. Key parameters: playerQuery (required), teamId, teamName, position.
-- searchPlayers: Searches for FPL players based on criteria like name, team, position, price, points. Key parameters: query, teamName, position, minPrice, maxPrice, minTotalPoints, sortBy, limit.
-- getTeam: Retrieves detailed information about an FPL team. Key parameters: teamQuery (required), includeFixtures, includePlayers.
-- getGameweek: Retrieves information about an FPL gameweek. Key parameters: gameweekId or type (current, next, previous).
-- searchFixtures: Searches for FPL fixtures. Key parameters: teamQuery, gameweekId, difficultyMin/Max, sortBy, limit.
-- compareEntities: Compares two FPL entities (players or teams). Key parameters: entity1Query (required), entity2Query (required), entityType (required).
+- get-player: Get information about a specific FPL player. Parameters: playerId, playerName, includeRawData.
+- get-team: Get information about an FPL team. Parameters: teamId (required).
+- get-gameweek: Get information about an FPL gameweek. Parameters: gameweekId, getCurrent, getNext, includeFixtures.
+- get-gameweek-fixtures: Get fixtures for a specific gameweek. Parameters: gameweekId (required).
+- get-top-scorers: Get the top goal scorers in the Premier League. Parameters: limit, position.
 
 TOOL SELECTION STRATEGY:
-1. Specific player info: getPlayer.
-2. Ranking/list queries ("who has most...", "best players for...", "players by price/form"): searchPlayers.
-3. Team performance/info: getTeam.
-4. Gameweek specific info (current, next, past ID): getGameweek.
-5. Fixture searches (by team, date range, difficulty, H2H): searchFixtures.
-6. Direct comparisons (player vs. player, team vs. team): compareEntities.
-7. Complex questions: Consider sequential tool use. If unsure, ask for clarification.
+1. For "top scorers", "leading scorers", "most goals" questions: use get-top-scorers
+2. For specific player info: use get-player
+3. For team info: use get-team (need team ID)
+4. For current/next gameweek info: use get-gameweek
+5. For gameweek fixtures: use get-gameweek-fixtures
 
 RESPONSE GUIDELINES:
-- Always provide context for statistics (e.g., "8 goals (3rd highest among midfielders)").
-- Include strategic FPL insights when relevant.
-- For player recommendations, consider form, fixtures, and value.
-- Explain your reasoning for recommendations.
-- When appropriate, suggest alternatives or considerations.
+- Always provide context for statistics
+- Include strategic FPL insights when relevant
+- For player recommendations, consider form, fixtures, and value
+- Explain your reasoning for recommendations
 
 Remember that you're advising on Fantasy Premier League (FPL), which is a fantasy sports game based on the English Premier League.`;
 
