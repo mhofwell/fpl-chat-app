@@ -77,16 +77,6 @@ export async function initializeMcpSession(): Promise<string | undefined> {
         // The server will send SSE events, but we just need the session ID
         console.log(`MCP session initialized: ${sessionId}`);
         
-        // Close the response stream since we don't need to read it for initialization
-        if (response.body) {
-            try {
-                const reader = response.body.getReader();
-                reader.cancel();
-            } catch (e) {
-                // Ignore errors when closing the stream
-            }
-        }
-        
         return sessionId;
     } catch (error) {
         console.error('Error initializing MCP session:', error);
