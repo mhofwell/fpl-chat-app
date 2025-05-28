@@ -37,8 +37,12 @@ export async function getMcpClient(sessionId?: string): Promise<{ client: Client
         // Connect the client
         await client.connect(transport);
 
-        // The transport will manage its own session ID after connection
-        const newSessionId = sessionId || transport.sessionId || 'default';
+        // Wait a moment for the transport to establish session
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Get the session ID from the transport after connection
+        const newSessionId = transport.sessionId || sessionId || `session-${Date.now()}`;
+        console.log('MCP Client connected with session:', newSessionId);
 
         // Cache the client and transport
         mcpClients.set(newSessionId, { client, transport });

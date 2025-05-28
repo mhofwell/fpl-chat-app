@@ -8,20 +8,19 @@ const anthropic = new Anthropic({
     apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
-// Cache for tools schema to avoid repeated fetches
-let cachedTools: any[] | null = null;
+// Don't cache tools to ensure fresh data for each session
+// let cachedTools: any[] | null = null;
 
 /**
  * Get tools schema from MCP server
  */
 async function getToolsForClaude(sessionId?: string): Promise<any[]> {
-    if (cachedTools) return cachedTools;
-    
     try {
         const tools = await listMcpTools(sessionId);
+        console.log('Available MCP tools:', tools.map(t => t.name));
         
         // Convert MCP tool format to Claude's expected format
-        cachedTools = tools.map(tool => ({
+        const formattedTools = tools.map(tool => ({
             name: tool.name,
             description: tool.description || `Tool: ${tool.name}`,
             input_schema: tool.inputSchema || {
@@ -31,7 +30,7 @@ async function getToolsForClaude(sessionId?: string): Promise<any[]> {
             },
         }));
         
-        return cachedTools;
+        return formattedTools;
     } catch (error) {
         console.error('Failed to fetch tools from MCP server:', error);
         // Fallback to hardcoded tools if MCP server is unavailable
@@ -157,7 +156,7 @@ TOOL SELECTION STRATEGY:
 1. For "top scorers", "leading scorers", "most goals" questions: use get-top-scorers
 2. For specific player info: use get-player
 3. For team info: use get-team (need team ID)
-4. For current/next gameweek info: use get-gameweek
+4. For current/next gameweek info: use get-current-gameweek
 5. For gameweek fixtures: use get-gameweek-fixtures
 
 RESPONSE GUIDELINES:
@@ -212,11 +211,15 @@ async function handleToolCalls(
     // Process tool calls sequentially to maintain session consistency
     for (const toolCall of toolCalls) {
         try {
+            console.log(`Calling tool: ${toolCall.name} with args:`, toolCall.input);
+            
             const response = await mcpCallTool(
                 toolCall.name,
                 toolCall.input,
                 currentSessionId
             );
+            
+            console.log(`Tool response for ${toolCall.name}:`, response);
             
             // Update session ID if changed
             currentSessionId = response.sessionId;
@@ -316,7 +319,7 @@ export async function* streamChatResponse(
         
         // If there were tool calls, handle them
         if (toolCalls.length > 0) {
-            console.log('Processing tool calls:', toolCalls.length);
+            console.log('Processing tool calls:', toolCalls.map(t => ({ name: t.name, id: t.id })));
             
             // Process tool calls
             const { results, sessionId: updatedSessionId, errors } = await handleToolCalls(
@@ -333,18 +336,37 @@ export async function* streamChatResponse(
 
             // Format the tool results for the follow-up message
             const toolResults = [
-                ...results.map(({ toolCall, result }) => ({
-                    type: 'tool_result' as const,
-                    tool_use_id: toolCall.id,
-                    content:
-                        typeof result === 'string'
-                            ? result
-                            : JSON.stringify(result),
-                })),
+                ...results.map(({ toolCall, result }) => {
+                    // Extract text content from MCP tool result format
+                    let content = '';
+                    if (Array.isArray(result)) {
+                        // If result is an array of content items
+                        content = result.map(item => {
+                            if (typeof item === 'string') return item;
+                            if (item?.text) return item.text;
+                            if (item?.type === 'text') return item.text || item.content || '';
+                            return JSON.stringify(item);
+                        }).join('\n');
+                    } else if (typeof result === 'string') {
+                        content = result;
+                    } else if (result?.text) {
+                        content = result.text;
+                    } else {
+                        content = JSON.stringify(result);
+                    }
+                    
+                    console.log(`Tool result for ${toolCall.name}:`, content.substring(0, 100) + '...');
+                    
+                    return {
+                        type: 'tool_result' as const,
+                        tool_use_id: toolCall.id,
+                        content,
+                    };
+                }),
                 ...errors.map(({ toolCall, error }) => ({
                     type: 'tool_result' as const,
                     tool_use_id: toolCall.id,
-                    content: JSON.stringify({ error }),
+                    content: `Error: ${error}`,
                 })),
             ];
 
@@ -356,11 +378,16 @@ export async function* streamChatResponse(
                 input: block.input,
             }));
             
+            // Show that we got tool results
+            if (results.length > 0) {
+                yield { type: 'text' as const, content: '\n\n' };
+            }
+            
             // Send a follow-up message with tool results to get final response
             const finalStream = await anthropic.messages.create({
                 model: 'claude-3-5-sonnet-20241022',
                 max_tokens: 1000,
-                system: `You are a Fantasy Premier League (FPL) assistant. You have received results from tools you requested. Use these results to answer the user's original question comprehensively.`,
+                system: CLAUDE_SYSTEM_PROMPT,
                 messages: [
                     { role: 'user' as const, content: message },
                     {
