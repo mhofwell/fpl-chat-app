@@ -23,14 +23,15 @@ router.post('/', async (req: Request, res: Response) => {
             const generatedSessionId = randomUUID();
             console.log(`Generated session ID: ${generatedSessionId}`);
             
+            // Set the session ID header immediately
+            res.setHeader('mcp-session-id', generatedSessionId);
+            
             transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: () => generatedSessionId,
                 onsessioninitialized: (sessionId) => {
                     // Store the transport by session ID
                     transports[sessionId] = transport!;
                     console.log(`Session initialized with ID: ${sessionId}`);
-                    // Set the session ID header
-                    res.setHeader('mcp-session-id', sessionId);
                 }
             });
 
@@ -46,6 +47,9 @@ router.post('/', async (req: Request, res: Response) => {
             const server = getMcpServer();
             await server.connect(transport);
             console.log(`Transport connected, sessionId: ${transport.sessionId}`);
+            
+            // Handle the initialization request
+            await transport.handleRequest(req, res, req.body);
             
         } else if (sessionId) {
             // Try to get existing transport
