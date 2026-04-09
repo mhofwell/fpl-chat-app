@@ -133,7 +133,7 @@ M0: Repo restructure           ──▶  M1: Python skeletons
    - §3 Tools: `PlayerSearchResult` with `{exact, suggestions}` for ambiguous name matches
    - §3 Tools: explicit NFKD Unicode-safe normalize function for fuzzy matching
    - §5 Caching: scheduler singleton constraint note + idempotent-writes requirement
-   - §7 Data layer: new `chat_runs` table schema with `run_id` as idempotency key, plus the durability protocol (insert pending row before loop, update during streaming, finalize on completion)
+   - §7 Data layer: new `agent_runs` table schema with `run_id` as idempotency key, plus the durability protocol (insert pending row before loop, update during streaming, finalize on completion). `chats` and `messages` tables explicitly dropped from Phase 1 scope.
    - §7 Data layer: APScheduler job table updated to show UPSERT on every write
    - §11 Risks: scheduler singleton as risk #1 (from Codex review), stale streaming runs as risk #2
 
@@ -141,7 +141,7 @@ M0: Repo restructure           ──▶  M1: Python skeletons
     - M0: this rewrite (pivot documentation)
     - M1: single-package structure (collapse `apps/agent-server/` into `apps/agent-server/src/fpl_agent/mcp/`; `packages/` stays empty until Phase 4)
     - M2: explicit UPSERT notes on every scheduled write
-    - M4: `chat_runs` pending-row insertion BEFORE agent loop, durability checkpoints during streaming, `run_id` idempotency on all writes
+    - M4: `agent_runs` pending-row insertion BEFORE agent loop, durability checkpoints during streaming, `run_id` idempotency on all writes, no multi-chat dependencies
     - Risks table: APScheduler multi-instance risk + mitigation
 
 11. **Fresh `git init` and initial commit**:
@@ -437,12 +437,11 @@ This constraint is documented in the design doc §5 and §11. Any code review th
    - Apply as FastAPI dependency on `/agent/chat/test`
    - Reject unauthenticated requests with 401
 
-7. **Durable, idempotent chat persistence** (addresses Codex review finding #2):
-   - Supabase migration: add `chat_runs` table per design doc §7
+7. **Durable, idempotent run persistence** (addresses Codex review finding #2; note the table is `agent_runs`, not `chat_runs` — the multi-chat concept was dropped per the "no multi/saved convos" Phase 1 decision):
+   - Supabase migration: add `agent_runs` table, standalone (no FK to a `chats` table which doesn't exist in our Phase 1 schema)
      ```sql
-     CREATE TABLE chat_runs (
+     CREATE TABLE agent_runs (
        run_id uuid PRIMARY KEY,
-       chat_id uuid NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
        user_id uuid NOT NULL REFERENCES auth.users(id),
        status text NOT NULL CHECK (status IN ('pending', 'streaming', 'completed', 'failed')),
        user_message_content text NOT NULL,
@@ -453,46 +452,45 @@ This constraint is documented in the design doc §5 and §11. Any code review th
        updated_at timestamptz NOT NULL DEFAULT now(),
        completed_at timestamptz
      );
-     CREATE INDEX idx_chat_runs_chat_id ON chat_runs(chat_id);
-     CREATE INDEX idx_chat_runs_user_id_created ON chat_runs(user_id, created_at DESC);
-     ALTER TABLE chat_runs ENABLE ROW LEVEL SECURITY;
-     CREATE POLICY chat_runs_owner ON chat_runs FOR ALL TO authenticated USING (user_id = auth.uid());
-     ALTER TABLE messages ADD COLUMN run_id uuid REFERENCES chat_runs(run_id);
+     CREATE INDEX idx_agent_runs_user_id_created ON agent_runs(user_id, created_at DESC);
+     ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+     CREATE POLICY agent_runs_owner ON agent_runs FOR ALL TO authenticated USING (user_id = auth.uid());
      ```
+     No changes to `chats`, `messages`, `profiles`, or `user_preferences`. Phase 1 does not touch those tables.
    - `apps/agent-server/src/fpl_agent/persistence/runs.py` — module with:
-     - `create_run_if_not_exists(run_id, chat_id, user_id, user_message, supabase_client) -> RunState` — performs the `INSERT ... ON CONFLICT (run_id) DO NOTHING RETURNING *`. Returns either the fresh row (caller owns the run) or the existing row (caller is a retry).
-     - `mark_run_streaming(run_id, supabase_client)` — `UPDATE chat_runs SET status='streaming' WHERE run_id=$1 AND status='pending'`
-     - `append_tool_event(run_id, event, supabase_client)` — batched append to `tool_events` JSONB. Batched every 500ms or on tool boundary (whichever comes first) to avoid per-chunk DB chatter.
-     - `finalize_run(run_id, assistant_content, supabase_client)` — `UPDATE chat_runs SET status='completed', assistant_message_content=$1, completed_at=now() WHERE run_id=$2`; then insert a corresponding `messages` row with `role='assistant'`, `run_id=$2`, `content=$1`, and final `tool_calls`/`tool_results` JSONB for eval replay.
-     - `fail_run(run_id, error, supabase_client)` — `UPDATE chat_runs SET status='failed', error=$err`
+     - `create_run_if_not_exists(run_id, user_id, user_message, supabase_client) -> RunState` — performs the `INSERT ... ON CONFLICT (run_id) DO NOTHING RETURNING *`. Returns either the fresh row (caller owns the run) or the existing row (caller is a retry).
+     - `mark_run_streaming(run_id, supabase_client)` — `UPDATE agent_runs SET status='streaming', updated_at=now() WHERE run_id=$1 AND status='pending'` (guard clause prevents re-entry)
+     - `append_tool_event(run_id, event, supabase_client)` — batched append to `tool_events` JSONB. Batched every 500ms or on tool boundary (whichever comes first) to avoid per-chunk DB chatter. The same batched call also updates `assistant_message_content` with the current partial text so mid-stream reconnects see progress.
+     - `finalize_run(run_id, assistant_content, supabase_client)` — `UPDATE agent_runs SET status='completed', assistant_message_content=$1, completed_at=now() WHERE run_id=$2`. That is the entire happy-path persistence; no separate `messages` insert, no transaction beyond this single UPDATE.
+     - `fail_run(run_id, error, supabase_client)` — `UPDATE agent_runs SET status='failed', error=$err, updated_at=now() WHERE run_id=$1`
    - Wire into the agent loop entry point:
      - `create_run_if_not_exists` BEFORE the first Anthropic call.
      - If the returned row has `status='completed'`, short-circuit: replay the stored `assistant_message_content` + `tool_events` as the response (non-streaming for M4; M5 replays as AG-UI events).
-     - If the returned row has `status='streaming'`, return a "run already in progress" 409 response (naive handling for M4; Phase 2+ can add wait-and-tail).
-     - If the returned row has `status='failed'`, replay the error.
+     - If the returned row has `status='streaming'`, return HTTP 409 "run already in progress" (Phase 1 has no wait-and-tail logic; Phase 2+ can add it).
+     - If the returned row has `status='failed'`, return the stored error.
      - If the insert happened, proceed to `mark_run_streaming` → Anthropic call → `append_tool_event` during the loop → `finalize_run` at the end.
-   - Use the user's JWT (forwarded via Supabase Python client) so RLS enforces ownership on every write.
+   - Use the user's JWT (forwarded via Supabase Python client) so RLS enforces ownership on every write. A request with user A's JWT must be unable to read or write a row owned by user B.
 
 8. Tests:
    - `test_agent_loop.py` — mock the Anthropic client, verify tool_use → tool execution → tool_result roundtrip
    - `test_cache_headers.py` — assert that the cache_control block placement is correct in the request payload
-   - `test_runs_idempotency.py` — integration test: call the endpoint twice with the same `run_id`, assert the second call returns the stored result without re-invoking Anthropic. Also: call with a fresh `run_id`, kill the process mid-run, restart, call again with the same `run_id`, assert the stale `streaming` state is handled correctly.
-   - `test_chat_persistence.py` — integration test against a real Supabase test project verifying the `chat_runs` row + `messages` row are written with the correct `user_id` under RLS
+   - `test_runs_idempotency.py` — integration test: call the endpoint twice with the same `run_id`, assert the second call returns the stored result without re-invoking Anthropic (verify via Anthropic SDK mock call count). Also: call with a fresh `run_id`, kill the process mid-run, restart, call again with the same `run_id`, assert the stale `streaming` state returns 409 (Phase 1 behavior; Phase 2+ gets smarter recovery).
+   - `test_agent_runs_rls.py` — integration test against a real Supabase test project verifying the `agent_runs` row is written under the correct `user_id`, and that user A's JWT cannot SELECT or UPDATE user B's rows.
 
 9. Manual verification with real Anthropic API:
-   - `curl -H "Authorization: Bearer <jwt>" -d '{"run_id":"...","chat_id":"...","message":"How is Arsenal doing?"}' http://localhost:8000/agent/chat/test`
+   - `curl -H "Authorization: Bearer <jwt>" -d '{"run_id":"<uuid>","message":"How is Arsenal doing?"}' http://localhost:8000/agent/chat/test`
    - Check logs: `cache_creation_input_tokens > 2048` on first call
-   - Second call within 5 minutes: `cache_read_input_tokens > 0`, `cache_creation_input_tokens == 0`
+   - Second call within 5 minutes (fresh run_id, same JWT): `cache_read_input_tokens > 0`, `cache_creation_input_tokens == 0`
    - **If caching isn't working, stop and debug before M5.** This is the single most important validation step in Phase 1.
-   - Retry the same request with the same `run_id` → must return the stored result WITHOUT a new Anthropic call (verify by checking the cache metrics don't increment)
+   - Retry the same request with the same `run_id` → must return the stored result WITHOUT a new Anthropic call (verify by checking the cache metrics don't increment AND by checking Anthropic dashboard for request count)
 
 **Definition of done:**
 - A real question hits the test endpoint and comes back with a grounded answer
-- Cache hits confirmed in logs on the second request
-- `chat_runs` row created in `pending` before the loop, updated to `streaming` during, and `completed` after
-- `messages` row inserted with `run_id` foreign key pointing at the run
+- Cache hits confirmed in logs on the second request (fresh run_id)
+- `agent_runs` row created in `pending` before the loop, updated to `streaming` during, and `completed` after
 - Retry with the same `run_id` returns the stored result, NOT a new LLM call
-- RLS verified: a request with user A's JWT cannot read/write user B's runs or messages
+- Concurrent duplicate submit (same `run_id`, second request mid-flight) returns HTTP 409
+- RLS verified: user A's JWT cannot read/write user B's `agent_runs` rows
 
 ---
 
@@ -568,39 +566,54 @@ This constraint is documented in the design doc §5 and §11. Any code review th
      - `onRunError` → show error in UI
      - `onStateDelta` → ignored in Phase 1 (relevant in Phase 2b)
 
-4. Rewrite `apps/web/components/chat/public-chat-ui.tsx`:
-   - Replace current streaming logic with `agentClient.runAgent({...}, new FplAgentSubscriber(...))`
-   - UI components stay the same visually — only the streaming plumbing changes
-   - Add a tool indicator component that shows during tool calls
+4. Rewrite `apps/web/components/chat/chat-transition-container.tsx` (the top-level chat shell) to use the new `agentClient`:
+   - Replace the current custom-streaming logic with `agentClient.runAgent({...}, new FplAgentSubscriber(...))`
+   - Generate a fresh `run_id` (UUID) per user turn, persist it in `sessionStorage` under `fpl:current-run-id` until the run completes (so a page refresh mid-run can still retry with the same ID)
+   - The `MessageBubble` / `ConversationView` / `TypingIndicator` / `MessageInputBar` components stay exactly as they are — the purple EPL theme, framer-motion animations, agent avatar, markdown rendering, all preserved. Only the streaming plumbing behind `onSendMessage` changes.
+   - Add a tool indicator inside the assistant message bubble that shows during tool calls (e.g., "Checking player data..." with a subtle spinner)
 
-5. Delete the following files and any imports of them:
-   - `apps/web/lib/stream-client.ts`
-   - `apps/web/app/api/chat/stream/route.ts`
-   - `apps/web/app/actions/chat-stream.ts`
-   - `apps/web/lib/mcp/` (the entire old MCP client directory)
-   - `apps/web/app/actions/mcp-tools.ts`
-   - `apps/web/lib/fpl-api/` (data fetching now happens in Python backend)
-   - `apps/web/app/api/fpl/` and `apps/web/app/api/cron/` and `apps/web/app/api/queue/`
-   - Anything else that was part of the old streaming path — grep for `streamChatResponse` and `getMcpClient` to find references
+5. **Fix the auto-scroll yank-to-bottom bug and add "new messages" pill** (preserving the smooth chat rendering that was the user's specific ask):
+   - Refactor `apps/web/components/chat/conversation-view.tsx`:
+     - New state: `isNearBottom` (boolean) and `hasUnreadMessages` (boolean)
+     - New `onScroll` handler on the `<ScrollArea>` viewport: compute distance from bottom; set `isNearBottom = distance < 100px`
+     - The existing `useEffect` that scrolls to `bottomRef` only fires `scrollIntoView` when `isNearBottom === true`. When `isNearBottom === false` and `messages` updates with a new assistant token or full message, set `hasUnreadMessages = true` and DO NOT scroll.
+     - When `isNearBottom` transitions from false → true (user manually scrolled back down), clear `hasUnreadMessages`.
+   - New component `apps/web/components/chat/new-messages-pill.tsx`:
+     - Absolutely positioned at the bottom of the scroll area, above the `MessageInputBar`
+     - Visible when `!isNearBottom && hasUnreadMessages`
+     - Styled with `bg-secondary text-secondary-foreground` (EPL Green against the purple theme)
+     - Text: "↓ New messages" with a subtle pulse animation
+     - Click handler: `bottomRef.current?.scrollIntoView({ behavior: 'smooth' })` + `setHasUnreadMessages(false)`
+     - Framer-motion enter/exit using the existing `transitions.inputBar` variant (consistent choreography with the rest of the UI)
+   - **Behavioral contract:** if the user is at or near the bottom, new messages auto-scroll as before (smooth and continuous). If the user has scrolled up to re-read earlier messages, the UI respects that: no yank, just a pill appears to let them jump back down when they're ready.
+   - This is the "scroll up within current conversation" behavior the user asked for. No DB pagination, no multi-chat sidebar, no IntersectionObserver — just respecting user scroll position.
 
-6. Chat persistence from the frontend:
-   - After `onRunFinished`, POST the user message + assistant message to a thin Next.js route `POST /api/chats/:chatId/messages` that writes to Supabase
-   - Alternative: have Python write directly (as in M4). Pick one and document.
-   - **Decision for Phase 1:** Python writes. Next.js doesn't need a chat-message API. Remove Next.js-side write path.
+6. Delete the following files and any imports of them:
+   - `apps/web/app/api/chat/stream/route.ts` (the custom streaming endpoint — replaced by Python `/agent/run`)
+   - `apps/web/app/actions/claude.ts` (Anthropic calls now happen in the Python backend)
+   - `apps/web/app/actions/mcp.ts` (MCP calls now happen in the Python backend)
+   - `apps/web/lib/claude/` (the client-side Claude wrapper)
+   - `apps/web/lib/types/fpl-types.ts` — NO, do not delete. The `ErrorType`/`ErrorResponse`/`Message`/etc. types are still used by the chat components. The `ToolCall`/`ClaudeResponse`/`McpToolResult` types become unused after the deletes above and should be removed from the file (but the file itself stays for the component prop types).
+   - Any other file that imports from the deleted modules — grep for `from '@/app/actions/claude'`, `from '@/app/actions/mcp'`, `from '@/lib/claude` and fix each caller.
 
-7. Environment variables:
-   - `NEXT_PUBLIC_AGENT_SERVER_URL` — the public URL of the Python backend
+7. Chat persistence stays in Python. The frontend never POSTs to a Next.js `/api/chats` route. The Python backend writes `agent_runs` rows as documented in M4 step 7. Next.js has zero chat-persistence logic in Phase 1.
+
+8. Environment variables:
+   - `NEXT_PUBLIC_AGENT_SERVER_URL` — the public URL of the Python backend (set in `apps/web/.env.local`)
    - Document in `apps/web/README.md`
 
-8. Tests:
-   - Component test for the chat UI with a mocked `HttpAgent` — verify text streaming, tool indicator, error handling
+9. Tests:
+   - Component test for `ConversationView` with mocked scroll events — verify the smart auto-scroll behavior (scroll up → new message arrives → no scroll, pill appears; scroll down → pill disappears)
+   - Component test for the chat shell with a mocked `HttpAgent` — verify text streaming, tool indicator appears/disappears, error handling
    - E2E test is deferred to M8 (full production smoke test)
 
 **Definition of done:**
 - Local dev: Next.js + Python backend both running, browser chat works end-to-end against a real Anthropic call
-- All files listed in step 5 are deleted from `apps/web/`
-- No imports of old streaming code remain anywhere
-- Chat message written to Supabase after each successful turn
+- Files listed in step 6 are deleted, no stale imports anywhere
+- Purple EPL theme + framer-motion animations + agent avatar + markdown rendering all still visibly intact (manual verification)
+- Smart auto-scroll works: scroll up during a streaming response, response keeps rendering in the background without yanking the user back, "↓ New messages" pill appears, click returns to the bottom
+- Tool indicator appears during tool calls
+- `agent_runs` rows still being written by the Python backend (verify in Supabase dashboard)
 
 ---
 
@@ -752,7 +765,7 @@ Phase 1 is done when all of the following are true:
 5. Two prompts (`/team_briefing`, `/transfer_debate`) implemented and usable from the chat UI
 6. Anthropic prompt caching verified in production logs: `cache_read_input_tokens > 0` on the second turn of any conversation
 7. Tool-layer evals running locally (CI optional) with > 80% coverage on the three tools
-8. `chat_runs` table populated with pending/streaming/completed rows; `messages` rows linked via `run_id`; retry with same `run_id` is idempotent (verified manually)
+8. `agent_runs` table populated with pending/streaming/completed rows; retry with same `run_id` is idempotent (verified manually); no multi-chat or saved-conversation UI (explicit non-goal)
 9. Structured logging with request IDs propagating from browser to Python
 10. `/health`, `/ready`, `/metrics` endpoints returning sensible output
 11. 10-question smoke test documented with results
@@ -768,12 +781,12 @@ When all 13 are checked, open a new plan doc for Phase 2a.
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | **[Codex]** Scheduler singleton violated by multi-replica deploy or rolling-deploy overlap | Medium | High | Railway service pinned to 1 replica; `uvicorn --workers 1` documented explicitly in config AND README; every scheduled write uses UPSERT so double-firing is safe; leader election added before any horizontal scaling |
-| **[Codex]** Chat persistence loses or duplicates turns under disconnect/retry/restart | High | High | `chat_runs` table with `run_id` as idempotency key; pending row written BEFORE Anthropic call; `ON CONFLICT DO NOTHING` prevents duplicates; retries return stored result without new LLM calls |
+| **[Codex]** Chat persistence loses or duplicates turns under disconnect/retry/restart | High | High | `agent_runs` table with `run_id` as idempotency key; pending row written BEFORE Anthropic call; `ON CONFLICT DO NOTHING` prevents duplicates; retries return stored result without new LLM calls |
 | Stale `streaming` runs after backend crash (no auto-sweeper in Phase 1) | Medium | Low | Frontend shows "run interrupted" for streaming rows older than 5 minutes; add automatic sweeper in Phase 2b |
 | Anthropic caching silently misses due to <2048 token system prompt | Medium | High | Log cache creation/read tokens on first production request; fail loudly if zero |
 | FastMCP in-process `Client(transport=mcp)` has an edge case with async lifespan | Low | Medium | Test early in M4; fallback is HTTP loopback via `mcp.http_app()` |
 | AG-UI spec drift breaks the adapter mid-project | Medium | Medium | Adapter isolated to one file; pin `ag-ui-protocol` version; revisit at each phase boundary |
-| Supabase RLS blocks Python backend's writes to `chat_runs`/`messages` | Medium | High | Test in M4 with a real RLS-enabled table; forward user JWT via Supabase Python client; verify user A cannot read/write user B's rows |
+| Supabase RLS blocks Python backend's writes to `agent_runs` | Medium | High | Test in M4 with a real RLS-enabled table; forward user JWT via Supabase Python client; verify user A cannot read/write user B's rows |
 | Railway deployment has surprise resource limits on Python workloads | Low | Medium | Deploy in M8 with headroom; fall back to Fly.io if blocked |
 | FPL API rate limits (undocumented) | Low | Medium | Cache-aside with 1h TTL limits real API calls to ~2/hour total; add logging to detect 429s |
 
@@ -783,8 +796,11 @@ When all 13 are checked, open a new plan doc for Phase 2a.
 
 Explicitly deferred to later phases and listed here so they don't sneak into Phase 1:
 
+- **Multi-conversation support.** No chat sidebar, no "new chat" button, no chat list UI. Chat state is ephemeral to the browser session; refreshing the page clears the UI. The `agent_runs` table persists runs for idempotency and durability but is never browsed by the user. Adding multi-chat later is a deliberate Phase 2a+ scope decision, not something that can sneak into Phase 1.
+- **Saved / resumed conversations.** No "pick up where you left off" feature, no loading prior messages from the DB, no cross-session history. A refresh is a fresh start.
+- **Cross-session chat history pagination.** No IntersectionObserver, no `GET /chats/:id/messages?before=<cursor>`, no chat history query endpoint. The "scroll up" behavior is limited to within the current in-memory conversation (smart auto-scroll only).
 - MCP Resources (no `fpl://` URIs exposed in Phase 1)
-- Postgres historical tables (only Redis cache)
+- Postgres historical tables for FPL data (only Redis cache; Phase 2b adds the historical tier)
 - Claude Desktop integration / public `/mcp` exposure
 - Server-side compaction
 - Context editing
