@@ -1,0 +1,66 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# testing
+coverage/
+
+# next.js
+.next/
+out/
+
+# production builds
+build/
+dist/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# local env files (never commit credentials)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+
+# redis dump files
+dump.rdb
+
+# TypeScript
+*.tsbuildinfo
+
+# logs
+logs/
+*.log
+
+# turbo (legacy, no longer used but kept as a safety net)
+.turbo/
+
+# editor configuration
+.cursor/
+**/.claude/settings.local.json
+
+# Python (agent-server, added in M1)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IMPORTANT: docs/ is committed (design, plans, standards, etc.)
+# The previous .gitignore excluded /docs which would have dropped the
+# design doc and Phase 1 plan from git. Do NOT re-add that exclusion.

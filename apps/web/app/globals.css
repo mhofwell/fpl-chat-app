@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ORIGINAL THEME (Backup) */
+  :root.original {
+    /* Light theme */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 142 76% 36%; /* FPL Green */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 142 76% 36%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    
+    /* Custom semantic colors */
+    --surface: 0 0% 98%;
+    --surface-foreground: 0 0% 3.9%;
+    --nav: 0 0% 100%;
+    --nav-border: 0 0% 89.8%;
+  }
+
+  /* PREMIER LEAGUE THEME */
+  :root {
+    /* Light theme */
+    --background: 0 0% 98%; /* #FAFAFA */
+    --foreground: 298 100% 14%; /* #38003C - EPL Purple */
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 298 100% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 298 100% 14%;
+    --primary: 298 100% 14%; /* #38003C - EPL Purple */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 152 100% 50%; /* #00FF87 - EPL Green */
+    --secondary-foreground: 298 100% 14%;
+    --muted: 298 20% 95%; /* Light purple tint */
+    --muted-foreground: 298 50% 30%;
+    --accent: 152 100% 50%; /* #00FF87 - EPL Green */
+    --accent-foreground: 298 100% 14%;
+    --destructive: 0 84% 60%; /* #EF4444 - red */
+    --destructive-foreground: 0 0% 98%;
+    --border: 298 20% 90%;
+    --input: 298 20% 90%;
+    --ring: 298 100% 14%;
+    --radius: 0.5rem;
+    --chart-1: 298 100% 14%;
+    --chart-2: 152 100% 50%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    
+    /* Custom semantic colors */
+    --surface: 0 0% 100%;
+    --surface-foreground: 298 100% 14%;
+    --nav: 0 0% 100%;
+    --nav-border: 298 20% 90%;
+  }
+
+  /* ORIGINAL DARK THEME (Backup) */
+  .dark.original {
+    /* Dark theme - matching current #2f2f2f design */
+    --background: 0 0% 18.4%; /* ~#2f2f2f equivalent */
+    --foreground: 0 0% 98%;
+    --card: 0 0% 18.4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 18.4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 142 76% 36%; /* Same FPL Green */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 27.3%;
+    --input: 0 0% 27.3%;
+    --ring: 142 76% 36%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    
+    /* Custom semantic colors */
+    --surface: 0 0% 18.4%;
+    --surface-foreground: 0 0% 98%;
+    --nav: 0 0% 18.4%;
+    --nav-border: 0 0% 27.3%;
+  }
+
+  /* PREMIER LEAGUE DARK THEME */
+  .dark {
+    --background: 298 50% 8%; /* Deep purple-black */
+    --foreground: 0 0% 98%; /* #FAFAFA */
+    --card: 298 50% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 298 50% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 298 100% 25%; /* #38003C - EPL Purple */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 152 100% 50%; /* #00FF87 - EPL Green */
+    --secondary-foreground: 298 100% 14%;
+    --muted: 298 30% 15%; /* Dark purple tint */
+    --muted-foreground: 298 20% 70%;
+    --accent: 152 100% 50%; /* #00FF87 - EPL Green */
+    --accent-foreground: 298 100% 14%;
+    --destructive: 0 84% 60%; /* #EF4444 - red */
+    --destructive-foreground: 0 0% 98%;
+    --border: 298 30% 20%; /* Purple-tinted border */
+    --input: 298 30% 20%;
+    --ring: 152 100% 50%;
+    --chart-1: 298 100% 25%;
+    --chart-2: 152 100% 50%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    
+    /* Custom semantic colors */
+    --surface: 298 40% 12%; /* Elevated purple-black */
+    --surface-foreground: 0 0% 98%;
+    --nav: 298 40% 12%;
+    --nav-border: 298 30% 20%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
