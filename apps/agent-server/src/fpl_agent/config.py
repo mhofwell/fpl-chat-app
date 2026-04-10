@@ -1,8 +1,8 @@
 """Application configuration for the FPL agent server.
 
 Uses pydantic-settings to load configuration from environment variables.
-M1 contains only the vars needed to boot and run /health.
-M2 adds: FPL_API_BASE, REDIS_URL, SUPABASE_URL, SUPABASE_SERVICE_KEY.
+M2 adds FPL_API_BASE and REDIS_URL for the data layer.
+Supabase service key deferred to M4 (agent_runs writes).
 """
 
 from __future__ import annotations
@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     # Service identity — used in structured log output
     service_name: str = "fpl-agent-server"
+
+    # FPL API
+    fpl_api_base: str = "https://fantasy.premierleague.com/api"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379"
 
 
 settings = Settings()

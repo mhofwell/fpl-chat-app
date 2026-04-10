@@ -4,7 +4,7 @@ Endpoints:
   GET /health — liveness probe (always 200 if process is alive)
 
 Future endpoints (wired in later milestones):
-  GET /ready       — readiness probe (M2: Redis + scheduler check)
+  GET /ready       — readiness probe (Redis + scheduler check)
   GET /metrics     — Prometheus metrics (M8)
   POST /agent/run  — AG-UI SSE endpoint (M5)
   POST /mcp        — FastMCP Streamable HTTP (M8)
@@ -18,6 +18,11 @@ from fastapi import FastAPI
 
 from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger, setup_logging
+from fpl_agent.mcp.data.bootstrap import get_bootstrap
+from fpl_agent.mcp.data.cache import RedisCache
+from fpl_agent.mcp.data.fixtures import get_all_fixtures
+from fpl_agent.mcp.data.fpl_client import FplClient
+from fpl_agent.scheduler import start_scheduler
 
 setup_logging(settings.log_level)
 log = get_logger(__name__)
@@ -25,14 +30,26 @@ log = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan.
-
-    M1: no-op — logs startup/shutdown.
-    M2: will prime Redis cache and start APScheduler here.
-    """
+    """Application lifespan — initialize data layer and scheduler."""
     log.info("agent_server_starting", message="FPL agent server starting up")
+
+    cache = RedisCache(url=settings.redis_url)
+    client = FplClient(base_url=settings.fpl_api_base)
+
+    # Prime cache on startup
+    await get_bootstrap(cache, client)
+    await get_all_fixtures(cache, client)
+
+    # Start hourly refresh jobs
+    scheduler = start_scheduler(cache, client)
+
     yield
-    log.info("agent_server_stopping", message="FPL agent server shutting down")
+
+    # Cleanup
+    scheduler.shutdown(wait=False)
+    await client.aclose()
+    await cache.aclose()
+    log.info("agent_server_stopped", message="FPL agent server shut down")
 
 
 app = FastAPI(
