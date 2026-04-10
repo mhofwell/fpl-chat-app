@@ -15,8 +15,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from fpl_agent.agent.loop import AgentLoop
     from fpl_agent.mcp.data.cache import RedisCache
     from fpl_agent.mcp.data.fpl_client import FplClient
 
 cache: RedisCache | None = None
 client: FplClient | None = None
+agent_loop: AgentLoop | None = None

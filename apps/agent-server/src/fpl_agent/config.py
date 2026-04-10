@@ -34,5 +34,8 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379"
 
+    # Anthropic model
+    anthropic_model: str = "claude-sonnet-4-5"
+
 
 settings = Settings()

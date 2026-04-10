@@ -16,7 +16,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from anthropic import AsyncAnthropic
+
 import fpl_agent.deps as deps
+from fpl_agent.agent.loop import AgentLoop
+from fpl_agent.agent.mcp_bridge import McpBridge
+from fpl_agent.api import chat
 from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger, setup_logging
 from fpl_agent.mcp.data.bootstrap import get_bootstrap
@@ -48,6 +53,19 @@ async def lifespan(app: FastAPI):
     await get_bootstrap(cache, client)
     await get_all_fixtures(cache, client)
 
+    # Initialize the Anthropic agent loop
+    anthropic_client = AsyncAnthropic(api_key=settings.claude_api_key)
+    mcp_bridge = McpBridge()
+    deps.agent_loop = AgentLoop(
+        anthropic_client=anthropic_client,
+        mcp_bridge=mcp_bridge,
+        model=settings.anthropic_model,
+    )
+    log.info(
+        "agent_loop_ready",
+        message=f"Agent loop initialized with model={settings.anthropic_model}",
+    )
+
     # Start hourly refresh jobs
     scheduler = start_scheduler(cache, client)
 
@@ -55,8 +73,10 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     scheduler.shutdown(wait=False)
+    deps.agent_loop = None
     deps.cache = None
     deps.client = None
+    await anthropic_client.close()
     await client.aclose()
     await cache.aclose()
     log.info("agent_server_stopped", message="FPL agent server shut down")
@@ -68,6 +88,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.include_router(chat.router)
 
 
 @app.get("/health")
