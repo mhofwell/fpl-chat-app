@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+import fpl_agent.deps as deps
 from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger, setup_logging
 from fpl_agent.mcp.data.bootstrap import get_bootstrap
@@ -36,6 +37,13 @@ async def lifespan(app: FastAPI):
     cache = RedisCache(url=settings.redis_url)
     client = FplClient(base_url=settings.fpl_api_base)
 
+    # Set runtime deps so tools can access cache/client
+    deps.cache = cache
+    deps.client = client
+
+    # Register tools (import triggers @mcp.tool decorators)
+    import fpl_agent.mcp.tools  # noqa: F401
+
     # Prime cache on startup
     await get_bootstrap(cache, client)
     await get_all_fixtures(cache, client)
@@ -47,6 +55,8 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     scheduler.shutdown(wait=False)
+    deps.cache = None
+    deps.client = None
     await client.aclose()
     await cache.aclose()
     log.info("agent_server_stopped", message="FPL agent server shut down")

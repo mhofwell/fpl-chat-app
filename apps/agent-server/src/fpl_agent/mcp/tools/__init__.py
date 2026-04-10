@@ -1,5 +1,9 @@
 """MCP tool registrations.
 
-M3: players.py, teams.py, fixtures.py are added here.
-Importing this package registers the tools on the shared mcp instance.
+Importing this package causes @mcp.tool decorators to fire,
+registering all three tools on the shared mcp instance.
 """
+
+import fpl_agent.mcp.tools.fixtures  # noqa: F401
+import fpl_agent.mcp.tools.players  # noqa: F401
+import fpl_agent.mcp.tools.teams  # noqa: F401
