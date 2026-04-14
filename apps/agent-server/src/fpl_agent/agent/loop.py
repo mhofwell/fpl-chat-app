@@ -31,6 +31,12 @@ from fpl_agent.adapters.anthropic_to_agui import AnthropicToAGUIAdapter
 from fpl_agent.agent.mcp_bridge import McpBridge
 from fpl_agent.log_config import get_logger
 from fpl_agent.mcp.system_prompt import DynamicContext, build_system_prompt_blocks
+from fpl_agent.metrics import (
+    ANTHROPIC_CACHE_READ_TOKENS,
+    ANTHROPIC_CACHE_WRITE_TOKENS,
+    ANTHROPIC_INPUT_TOKENS,
+    ANTHROPIC_OUTPUT_TOKENS,
+)
 from fpl_agent.persistence.runs import (
     append_tool_event,
     fail_run,
@@ -350,21 +356,34 @@ class AgentLoop:
             raise
 
     def _log_usage(self, usage: Any, iteration: int) -> None:
-        """Log token usage including cache metrics. Cache verification hook."""
+        """Log + record token usage including cache metrics.
+
+        This is the cache verification hook: `cache_read_input_tokens > 0`
+        on any iteration after the first means the prompt cache is live.
+        """
+        cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        input_tokens = usage.input_tokens
+        output_tokens = usage.output_tokens
+
         log.info(
             "anthropic_usage",
             message=(
                 f"iter={iteration} "
-                f"in={usage.input_tokens} out={usage.output_tokens} "
-                f"cache_create={getattr(usage, 'cache_creation_input_tokens', 0)} "
-                f"cache_read={getattr(usage, 'cache_read_input_tokens', 0)}"
+                f"in={input_tokens} out={output_tokens} "
+                f"cache_create={cache_create} cache_read={cache_read}"
             ),
             iteration=iteration,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cache_creation_input_tokens=getattr(usage, "cache_creation_input_tokens", 0),
-            cache_read_input_tokens=getattr(usage, "cache_read_input_tokens", 0),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_create,
+            cache_read_input_tokens=cache_read,
         )
+
+        ANTHROPIC_INPUT_TOKENS.inc(input_tokens)
+        ANTHROPIC_OUTPUT_TOKENS.inc(output_tokens)
+        ANTHROPIC_CACHE_READ_TOKENS.inc(cache_read)
+        ANTHROPIC_CACHE_WRITE_TOKENS.inc(cache_create)
 
 
 def _extract_text(content: list) -> str:

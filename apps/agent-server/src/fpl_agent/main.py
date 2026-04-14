@@ -1,13 +1,17 @@
 """FPL Agent Server — FastAPI application entry point.
 
 Endpoints:
-  GET /health — liveness probe (always 200 if process is alive)
+  GET  /health          — liveness probe (200 if process is alive)
+  GET  /ready           — readiness probe (cache + scheduler + agent_loop)
+  GET  /metrics         — Prometheus exposition of the 6 Phase 1 counters
+  POST /agent/run       — AG-UI SSE streaming chat (JWT-auth'd, persisted)
+  POST /agent/chat/test — non-streaming test endpoint (no auth)
 
-Future endpoints (wired in later milestones):
-  GET /ready       — readiness probe (Redis + scheduler check)
-  GET /metrics     — Prometheus metrics (M8)
-  POST /agent/run  — AG-UI SSE endpoint (M5)
-  POST /mcp        — FastMCP Streamable HTTP (M8)
+Middleware stack (outer to inner):
+  request_id_middleware  — reads/generates X-Request-Id, binds to structlog
+  CORSMiddleware         — allows the configured Next.js origin
+
+Deferred to Phase 2: public /mcp Streamable HTTP endpoint for Claude Desktop.
 """
 
 from __future__ import annotations
@@ -24,9 +28,10 @@ from supabase import create_client
 import fpl_agent.deps as deps
 from fpl_agent.agent.loop import AgentLoop
 from fpl_agent.agent.mcp_bridge import McpBridge
-from fpl_agent.api import agent, chat
+from fpl_agent.api import agent, chat, health
 from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger, setup_logging
+from fpl_agent.middleware import request_id_middleware
 from fpl_agent.mcp.data.bootstrap import get_bootstrap
 from fpl_agent.mcp.data.cache import RedisCache
 from fpl_agent.mcp.data.fixtures import get_all_fixtures
@@ -49,8 +54,9 @@ async def lifespan(app: FastAPI):
     deps.cache = cache
     deps.client = client
 
-    # Register tools (import triggers @mcp.tool decorators)
+    # Register tools + prompts (imports trigger @mcp.tool / @mcp.prompt decorators)
     import fpl_agent.mcp.tools  # noqa: F401
+    import fpl_agent.mcp.prompts  # noqa: F401
 
     # Prime cache on startup
     await get_bootstrap(cache, client)
@@ -121,13 +127,10 @@ app.add_middleware(
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
+    expose_headers=["X-Request-Id"],
 )
+app.middleware("http")(request_id_middleware)
+app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(agent.router)
-
-
-@app.get("/health")
-async def health() -> dict:
-    """Liveness probe."""
-    return {"status": "ok", "service": settings.service_name}

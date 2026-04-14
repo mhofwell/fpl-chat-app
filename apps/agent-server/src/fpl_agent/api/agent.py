@@ -33,6 +33,7 @@ from supabase import Client as SupabaseClient
 import fpl_agent.deps as deps
 from fpl_agent.auth import get_current_user, get_user_supabase_client
 from fpl_agent.log_config import get_logger
+from fpl_agent.metrics import AGENT_REQUESTS
 from fpl_agent.persistence.runs import RunState, create_run_if_not_exists
 
 log = get_logger(__name__)
@@ -109,6 +110,7 @@ async def run_agent(
     supabase: SupabaseClient = Depends(get_user_supabase_client),
 ) -> StreamingResponse:
     """Stream AG-UI events for one agent run."""
+    AGENT_REQUESTS.labels(status="started").inc()
     if deps.agent_loop is None:
         raise HTTPException(status_code=503, detail="Agent loop not initialized")
 
@@ -136,11 +138,13 @@ async def run_agent(
         if run_state.status == "completed":
             async for ev in _replay_completed_run(run_state, input.thread_id, input.run_id):
                 yield encoder.encode(ev)
+            AGENT_REQUESTS.labels(status="replayed").inc()
             return
 
         if run_state.status == "failed":
             async for ev in _replay_failed_run(run_state, input.thread_id, input.run_id):
                 yield encoder.encode(ev)
+            AGENT_REQUESTS.labels(status="replayed").inc()
             return
 
         # status == "pending" — we own this run
@@ -154,9 +158,11 @@ async def run_agent(
                 conversation_history=conversation_history,
             ):
                 yield encoder.encode(event)
+            AGENT_REQUESTS.labels(status="finished").inc()
         except Exception as exc:
             # run_stream already yielded RunErrorEvent and wrote fail_run;
             # log here for server-side visibility
+            AGENT_REQUESTS.labels(status="failed").inc()
             log.error(
                 "agent_run_endpoint_failed",
                 message=f"Stream terminated with error: {exc}",

@@ -11,6 +11,7 @@ from fastmcp import Client
 
 from fpl_agent.log_config import get_logger
 from fpl_agent.mcp.server import mcp
+from fpl_agent.metrics import TOOL_CALLS
 
 log = get_logger(__name__)
 
@@ -62,15 +63,18 @@ class McpBridge:
                 tool=name,
                 error=str(exc),
             )
+            TOOL_CALLS.labels(tool_name=name, outcome="error").inc()
             return (f"Tool error: {exc}", True)
 
         # FastMCP returns CallToolResult with `content` (list of TextContent)
         # and `structured_content` (parsed dict). We use content[0].text since
         # that's the canonical JSON string FastMCP serialized for us.
         if result.is_error:
+            TOOL_CALLS.labels(tool_name=name, outcome="error").inc()
             text = result.content[0].text if result.content else "Unknown tool error"
             return (text, True)
 
+        TOOL_CALLS.labels(tool_name=name, outcome="success").inc()
         if result.content:
             return (result.content[0].text, False)
 
