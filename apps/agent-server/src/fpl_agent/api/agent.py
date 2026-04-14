@@ -24,7 +24,7 @@ from ag_ui.core.events import (
     TextMessageEndEvent,
     TextMessageStartEvent,
 )
-from ag_ui.core.types import RunAgentInput, UserMessage
+from ag_ui.core.types import AssistantMessage, RunAgentInput, UserMessage
 from ag_ui.encoder import EventEncoder
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -39,18 +39,43 @@ log = get_logger(__name__)
 router = APIRouter()
 
 
+def _user_message_content_as_text(msg: UserMessage) -> str:
+    """Flatten a UserMessage.content (str | list[InputContent]) to plain text."""
+    content = msg.content
+    if isinstance(content, str):
+        return content
+    return "".join(
+        getattr(part, "text", "") for part in content if hasattr(part, "text")
+    )
+
+
 def _extract_last_user_message(input: RunAgentInput) -> str:
     """Walk messages from the end, return the content of the last UserMessage."""
     for msg in reversed(input.messages):
         if isinstance(msg, UserMessage):
-            content = msg.content
-            if isinstance(content, str):
-                return content
-            # InputContent list — concatenate text parts
-            return "".join(
-                getattr(part, "text", "") for part in content if hasattr(part, "text")
-            )
+            return _user_message_content_as_text(msg)
     raise HTTPException(status_code=400, detail="No user message in input.messages")
+
+
+def _convert_messages_for_anthropic(input: RunAgentInput) -> list[dict]:
+    """Convert AG-UI conversation history to Anthropic messages format.
+
+    Passes user and assistant turns through; skips tool/reasoning/system
+    messages (Claude ignores duplicated system, and tool rounds are
+    self-contained within a single assistant turn's tool_use blocks).
+    The last message is expected to be the current user turn.
+    """
+    converted: list[dict] = []
+    for msg in input.messages:
+        if isinstance(msg, UserMessage):
+            converted.append(
+                {"role": "user", "content": _user_message_content_as_text(msg)}
+            )
+        elif isinstance(msg, AssistantMessage) and msg.content:
+            # AssistantMessage.content is str | None. Only include non-empty text turns;
+            # prior tool_use rounds aren't reconstructible from what the client sends.
+            converted.append({"role": "assistant", "content": msg.content})
+    return converted
 
 
 async def _replay_completed_run(run_state: RunState, thread_id: str, run_id: str):
@@ -88,6 +113,7 @@ async def run_agent(
         raise HTTPException(status_code=503, detail="Agent loop not initialized")
 
     user_message = _extract_last_user_message(input)
+    conversation_history = _convert_messages_for_anthropic(input)
 
     try:
         run_uuid = UUID(input.run_id)
@@ -125,6 +151,7 @@ async def run_agent(
                 run_id=input.run_id,
                 user_id=user_id,
                 supabase=supabase,
+                conversation_history=conversation_history,
             ):
                 yield encoder.encode(event)
         except Exception as exc:

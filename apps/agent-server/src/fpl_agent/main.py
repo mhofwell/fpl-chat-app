@@ -15,6 +15,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from anthropic import AsyncAnthropic
 from fastmcp.server.auth.providers.jwt import JWTVerifier
@@ -114,6 +115,13 @@ app = FastAPI(
     description="Fantasy Premier League AI chat backend — FastAPI + FastMCP + AG-UI",
     version="0.1.0",
     lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 app.include_router(chat.router)
 app.include_router(agent.router)

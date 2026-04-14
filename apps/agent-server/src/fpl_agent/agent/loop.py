@@ -171,6 +171,7 @@ class AgentLoop:
         user_id: UUID | None = None,
         supabase: SupabaseClient | None = None,
         dynamic_context: DynamicContext | None = None,
+        conversation_history: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[BaseEvent]:
         """Streaming agent loop yielding AG-UI events.
 
@@ -184,6 +185,12 @@ class AgentLoop:
         marks streaming on entry, appends tool events per tool call,
         finalizes on success, fails on exception. When supabase is None,
         the loop runs without persistence (still used by /agent/chat/test).
+
+        When `conversation_history` is provided (M6), it's used as the
+        initial messages payload instead of a single-turn user message.
+        The history is expected to END with the current user turn (as the
+        /agent/run endpoint constructs it). Falls back to a fresh [user]
+        history when None (used by /agent/chat/test + unit tests).
         """
         yield RunStartedEvent(thread_id=thread_id, run_id=run_id)
 
@@ -215,9 +222,11 @@ class AgentLoop:
                 dynamic_context or DynamicContext()
             )
             tools = await self._mcp.list_tools_anthropic_format()
-            messages: list[dict[str, Any]] = [
-                {"role": "user", "content": user_message}
-            ]
+            messages: list[dict[str, Any]] = (
+                list(conversation_history)
+                if conversation_history
+                else [{"role": "user", "content": user_message}]
+            )
 
             for iteration in range(self._max_iters):
                 adapter = AnthropicToAGUIAdapter()

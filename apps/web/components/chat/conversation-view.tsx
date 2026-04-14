@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { motion, AnimatePresence } from 'framer-motion';
 import { transitions } from './animations/transitions';
@@ -11,6 +11,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, ConversationViewProps } from '@/lib/types/fpl-types';
+import { NewMessagesPill } from './new-messages-pill';
+
+// Distance from bottom (px) under which we consider the user "at bottom"
+// and auto-scroll as new messages arrive.
+const NEAR_BOTTOM_PX = 100;
 
 function MessageBubble({
     message,
@@ -76,9 +81,9 @@ function MessageBubble({
             {message.role === 'assistant' && (
                 <Avatar className="h-10 w-10 ring-2 ring-primary/20 bg-white">
                     <div className="h-full w-full flex items-center justify-center p-1.5">
-                        <img 
-                            src="/fpl-assistant.png" 
-                            alt="FPL Assistant" 
+                        <img
+                            src="/fpl-assistant.png"
+                            alt="FPL Assistant"
                             className="h-full w-full object-contain"
                         />
                     </div>
@@ -131,26 +136,66 @@ function MessageBubble({
     );
 }
 
+interface ExtendedConversationViewProps extends ConversationViewProps {
+    activeTool?: { id: string; name: string } | null;
+}
+
 export function ConversationView({
     messages,
     onSendMessage,
     isLoading = false,
     userName,
     userInitials,
-}: ConversationViewProps) {
+    activeTool,
+}: ExtendedConversationViewProps) {
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLElement | null>(null);
+    const [isNearBottom, setIsNearBottom] = useState(true);
+    const [hasUnread, setHasUnread] = useState(false);
 
+    // Attach scroll listener to Radix ScrollArea's viewport element.
     useEffect(() => {
+        const root = scrollAreaRef.current;
+        if (!root) return;
+        const viewport = root.querySelector<HTMLElement>(
+            '[data-radix-scroll-area-viewport]'
+        );
+        if (!viewport) return;
+        viewportRef.current = viewport;
+
+        const handleScroll = () => {
+            const distance =
+                viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight);
+            const near = distance < NEAR_BOTTOM_PX;
+            setIsNearBottom(near);
+            if (near) setHasUnread(false);
+        };
+        viewport.addEventListener('scroll', handleScroll, { passive: true });
+        return () => viewport.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // On new messages: scroll to bottom if user is near bottom, otherwise
+    // mark unread so the pill appears.
+    useEffect(() => {
+        if (isNearBottom) {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            setHasUnread(true);
+        }
+    }, [messages, isNearBottom]);
+
+    const jumpToBottom = () => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        setHasUnread(false);
+    };
 
     return (
         <motion.div
             variants={transitions.conversationView}
             initial="initial"
             animate="animate"
-            className="flex flex-col h-full"
+            className="flex flex-col h-full relative"
         >
             <ScrollArea className="flex-1 px-4" ref={scrollAreaRef}>
                 <div className="max-w-3xl mx-auto pt-8 pb-32 space-y-4">
@@ -164,9 +209,26 @@ export function ConversationView({
                             />
                         ))}
                     </AnimatePresence>
+                    {activeTool && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 6 }}
+                            className="flex items-center gap-2 text-xs text-muted-foreground pl-14"
+                        >
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-secondary animate-pulse" />
+                            Looking up {activeTool.name.replace(/_/g, ' ')}...
+                        </motion.div>
+                    )}
                     <div ref={bottomRef} />
                 </div>
             </ScrollArea>
+
+            <AnimatePresence>
+                {!isNearBottom && hasUnread && (
+                    <NewMessagesPill onClick={jumpToBottom} />
+                )}
+            </AnimatePresence>
 
             <MessageInputBar onSubmit={onSendMessage} isLoading={isLoading} />
         </motion.div>

@@ -42,5 +42,9 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""  # anon key for user-scoped writes with forwarded JWT
     supabase_jwt_algorithm: str = "ES256"  # Supabase default; legacy projects use RS256
 
+    # CORS — allowed browser origins for /agent/run
+    # Comma-separated string when loaded from env (pydantic-settings splits it).
+    cors_allowed_origins: list[str] = ["http://localhost:3000"]
+
 
 settings = Settings()

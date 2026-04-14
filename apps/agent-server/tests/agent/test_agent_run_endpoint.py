@@ -64,6 +64,7 @@ class _FakeAgentLoop:
         user_id=None,
         supabase=None,
         dynamic_context=None,
+        conversation_history=None,
     ):
         for ev in self._events:
             yield ev
@@ -320,7 +321,14 @@ def test_endpoint_400_on_invalid_run_id(setup_fake_loop):
 
 class _RaisingAgentLoop:
     async def run_stream(
-        self, user_message, thread_id, run_id, user_id=None, supabase=None, dynamic_context=None
+        self,
+        user_message,
+        thread_id,
+        run_id,
+        user_id=None,
+        supabase=None,
+        dynamic_context=None,
+        conversation_history=None,
     ):
         yield RunStartedEvent(thread_id=thread_id, run_id=run_id)
         yield RunErrorEvent(message="boom", code="agent_error")
