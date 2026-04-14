@@ -15,6 +15,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from fastmcp.server.auth.providers.jwt import JWTVerifier
+    from supabase import Client as SupabaseClient
+
     from fpl_agent.agent.loop import AgentLoop
     from fpl_agent.mcp.data.cache import RedisCache
     from fpl_agent.mcp.data.fpl_client import FplClient
@@ -22,3 +25,5 @@ if TYPE_CHECKING:
 cache: RedisCache | None = None
 client: FplClient | None = None
 agent_loop: AgentLoop | None = None
+jwt_verifier: JWTVerifier | None = None
+supabase_client: SupabaseClient | None = None

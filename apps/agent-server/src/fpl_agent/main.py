@@ -17,6 +17,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from anthropic import AsyncAnthropic
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+from supabase import create_client
 
 import fpl_agent.deps as deps
 from fpl_agent.agent.loop import AgentLoop
@@ -66,6 +68,29 @@ async def lifespan(app: FastAPI):
         message=f"Agent loop initialized with model={settings.anthropic_model}",
     )
 
+    # Initialize the Supabase JWT verifier + shared client for /agent/run
+    if settings.supabase_url and settings.supabase_anon_key:
+        jwks_uri = f"{settings.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        issuer = f"{settings.supabase_url.rstrip('/')}/auth/v1"
+        deps.jwt_verifier = JWTVerifier(
+            jwks_uri=jwks_uri,
+            issuer=issuer,
+            audience="authenticated",
+            algorithm=settings.supabase_jwt_algorithm,
+        )
+        deps.supabase_client = create_client(
+            settings.supabase_url, settings.supabase_anon_key
+        )
+        log.info(
+            "supabase_ready",
+            message=f"Supabase JWT verifier + shared client initialized for {issuer}",
+        )
+    else:
+        log.warning(
+            "supabase_skipped",
+            message="SUPABASE_URL or SUPABASE_ANON_KEY not set — /agent/run will 503 until configured",
+        )
+
     # Start hourly refresh jobs
     scheduler = start_scheduler(cache, client)
 
@@ -73,6 +98,8 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     scheduler.shutdown(wait=False)
+    deps.supabase_client = None
+    deps.jwt_verifier = None
     deps.agent_loop = None
     deps.cache = None
     deps.client = None

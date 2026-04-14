@@ -15,6 +15,7 @@ import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from ag_ui.core.events import (
     BaseEvent,
@@ -24,11 +25,18 @@ from ag_ui.core.events import (
     ToolCallResultEvent,
 )
 from anthropic import AsyncAnthropic
+from supabase import Client as SupabaseClient
 
 from fpl_agent.adapters.anthropic_to_agui import AnthropicToAGUIAdapter
 from fpl_agent.agent.mcp_bridge import McpBridge
 from fpl_agent.log_config import get_logger
 from fpl_agent.mcp.system_prompt import DynamicContext, build_system_prompt_blocks
+from fpl_agent.persistence.runs import (
+    append_tool_event,
+    fail_run,
+    finalize_run,
+    mark_run_streaming,
+)
 
 log = get_logger(__name__)
 
@@ -160,6 +168,8 @@ class AgentLoop:
         user_message: str,
         thread_id: str,
         run_id: str,
+        user_id: UUID | None = None,
+        supabase: SupabaseClient | None = None,
         dynamic_context: DynamicContext | None = None,
     ) -> AsyncIterator[BaseEvent]:
         """Streaming agent loop yielding AG-UI events.
@@ -169,10 +179,35 @@ class AgentLoop:
         RunErrorEvent on failure, and ToolCallResultEvent after each tool
         execution. Per-token text and per-chunk tool args come from the
         AnthropicToAGUIAdapter.
+
+        When `supabase` is provided (M4b), persists run state to agent_runs:
+        marks streaming on entry, appends tool events per tool call,
+        finalizes on success, fails on exception. When supabase is None,
+        the loop runs without persistence (still used by /agent/chat/test).
         """
         yield RunStartedEvent(thread_id=thread_id, run_id=run_id)
 
+        run_uuid = UUID(run_id) if supabase is not None else None
+        accumulated_text = ""
+
         try:
+            if supabase is not None and run_uuid is not None:
+                claimed = await mark_run_streaming(run_uuid, supabase)
+                if not claimed:
+                    # Another worker already transitioned this run past
+                    # 'pending' between create_run_if_not_exists and here.
+                    # Abandon to avoid double-executing the agent loop.
+                    log.warning(
+                        "run_already_claimed",
+                        message=f"run_id={run_id} no longer in pending state; aborting",
+                        run_id=run_id,
+                    )
+                    yield RunErrorEvent(
+                        message="Run already claimed by another worker",
+                        code="run_already_claimed",
+                    )
+                    return
+
             # Build system prompt + tool list inside the try so that any
             # error here is reported as a RunErrorEvent rather than closing
             # the stream silently after RunStartedEvent.
@@ -203,6 +238,13 @@ class AgentLoop:
 
                 self._log_usage(final_message.usage, iteration)
 
+                # Accumulate text blocks from this round (only the final
+                # non-tool-use round carries the user-facing response, but
+                # sum them in case the model emits text alongside tool_use).
+                for block in final_message.content:
+                    if getattr(block, "type", None) == "text":
+                        accumulated_text += block.text
+
                 if adapter.stop_reason != "tool_use":
                     if adapter.stop_reason == "max_tokens":
                         log.warning(
@@ -210,6 +252,8 @@ class AgentLoop:
                             message=f"Stream truncated at max_tokens on iteration {iteration}",
                             iteration=iteration,
                         )
+                    if supabase is not None and run_uuid is not None:
+                        await finalize_run(run_uuid, accumulated_text, supabase)
                     yield RunFinishedEvent(thread_id=thread_id, run_id=run_id)
                     return
 
@@ -237,6 +281,20 @@ class AgentLoop:
                         content=content,
                     )
 
+                    if supabase is not None and run_uuid is not None:
+                        await append_tool_event(
+                            run_uuid,
+                            {
+                                "type": "tool_call",
+                                "tool_call_id": tu.id,
+                                "tool_name": tu.name,
+                                "input_json": tu.input_json,
+                                "result": content,
+                                "is_error": is_error,
+                            },
+                            supabase,
+                        )
+
                     block: dict[str, Any] = {
                         "type": "tool_result",
                         "tool_use_id": tu.id,
@@ -249,6 +307,15 @@ class AgentLoop:
                 messages.append({"role": "user", "content": tool_results})
 
             # Max iterations exceeded
+            if supabase is not None and run_uuid is not None:
+                await fail_run(
+                    run_uuid,
+                    {
+                        "type": "MaxIterationsExceeded",
+                        "message": f"Agent loop exceeded max_tool_iterations={self._max_iters}",
+                    },
+                    supabase,
+                )
             yield RunErrorEvent(
                 message=f"Agent loop exceeded max_tool_iterations={self._max_iters}",
                 code="max_iterations",
@@ -256,7 +323,21 @@ class AgentLoop:
 
         except Exception as exc:
             log.exception("agent_stream_failed", message=str(exc))
+            # Yield the error event BEFORE persisting — a slow Supabase
+            # response must not block the client from seeing the error.
             yield RunErrorEvent(message=str(exc), code="agent_error")
+            if supabase is not None and run_uuid is not None:
+                try:
+                    await fail_run(
+                        run_uuid,
+                        {"type": type(exc).__name__, "message": str(exc)},
+                        supabase,
+                    )
+                except Exception as fail_exc:
+                    log.error(
+                        "fail_run_write_failed",
+                        message=f"Could not persist failure state: {fail_exc}",
+                    )
             raise
 
     def _log_usage(self, usage: Any, iteration: int) -> None:

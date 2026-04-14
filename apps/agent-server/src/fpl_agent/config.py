@@ -2,7 +2,7 @@
 
 Uses pydantic-settings to load configuration from environment variables.
 M2 adds FPL_API_BASE and REDIS_URL for the data layer.
-Supabase service key deferred to M4 (agent_runs writes).
+M4b adds SUPABASE_URL + SUPABASE_ANON_KEY for JWT auth and agent_runs writes.
 """
 
 from __future__ import annotations
@@ -36,6 +36,11 @@ class Settings(BaseSettings):
 
     # Anthropic model
     anthropic_model: str = "claude-sonnet-4-5"
+
+    # Supabase — JWT auth + agent_runs persistence
+    supabase_url: str = ""  # e.g., "https://xxx.supabase.co" (no trailing slash)
+    supabase_anon_key: str = ""  # anon key for user-scoped writes with forwarded JWT
+    supabase_jwt_algorithm: str = "ES256"  # Supabase default; legacy projects use RS256
 
 
 settings = Settings()
