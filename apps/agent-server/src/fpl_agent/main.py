@@ -21,7 +21,7 @@ from anthropic import AsyncAnthropic
 import fpl_agent.deps as deps
 from fpl_agent.agent.loop import AgentLoop
 from fpl_agent.agent.mcp_bridge import McpBridge
-from fpl_agent.api import chat
+from fpl_agent.api import agent, chat
 from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger, setup_logging
 from fpl_agent.mcp.data.bootstrap import get_bootstrap
@@ -89,6 +89,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(chat.router)
+app.include_router(agent.router)
 
 
 @app.get("/health")

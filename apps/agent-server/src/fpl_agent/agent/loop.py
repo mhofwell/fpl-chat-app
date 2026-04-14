@@ -1,23 +1,31 @@
 """Anthropic agent loop with in-process FastMCP tool execution.
 
-Non-streaming for M4a. Streaming + AG-UI is M5.
+Two entry points:
+- `run()` — non-streaming, returns AgentRunResult. Used by /agent/chat/test.
+- `run_stream()` — async generator yielding AG-UI events. Used by /agent/run.
 
-The loop:
-1. Builds system prompt blocks (static cached + dynamic prelude)
-2. Lists tools from FastMCP in Anthropic format (with cache_control on last)
-3. Calls anthropic.messages.create with tool_choice=auto
-4. If stop_reason == "tool_use", executes tools via mcp_bridge, appends
-   tool_use + tool_result to messages, loops
-5. Otherwise returns the final text response
+Both share the same multi-iteration agent loop pattern. The streaming
+version translates Anthropic streaming events into AG-UI events via
+AnthropicToAGUIAdapter and yields them as they arrive.
 """
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from ag_ui.core.events import (
+    BaseEvent,
+    RunErrorEvent,
+    RunFinishedEvent,
+    RunStartedEvent,
+    ToolCallResultEvent,
+)
 from anthropic import AsyncAnthropic
 
+from fpl_agent.adapters.anthropic_to_agui import AnthropicToAGUIAdapter
 from fpl_agent.agent.mcp_bridge import McpBridge
 from fpl_agent.log_config import get_logger
 from fpl_agent.mcp.system_prompt import DynamicContext, build_system_prompt_blocks
@@ -146,6 +154,110 @@ class AgentLoop:
         raise AgentLoopError(
             f"Agent loop exceeded max_tool_iterations={self._max_iters}"
         )
+
+    async def run_stream(
+        self,
+        user_message: str,
+        thread_id: str,
+        run_id: str,
+        dynamic_context: DynamicContext | None = None,
+    ) -> AsyncIterator[BaseEvent]:
+        """Streaming agent loop yielding AG-UI events.
+
+        Wraps the multi-iteration tool-calling loop with AG-UI semantics:
+        emits RunStartedEvent at the start, RunFinishedEvent on success,
+        RunErrorEvent on failure, and ToolCallResultEvent after each tool
+        execution. Per-token text and per-chunk tool args come from the
+        AnthropicToAGUIAdapter.
+        """
+        yield RunStartedEvent(thread_id=thread_id, run_id=run_id)
+
+        try:
+            # Build system prompt + tool list inside the try so that any
+            # error here is reported as a RunErrorEvent rather than closing
+            # the stream silently after RunStartedEvent.
+            system_blocks = build_system_prompt_blocks(
+                dynamic_context or DynamicContext()
+            )
+            tools = await self._mcp.list_tools_anthropic_format()
+            messages: list[dict[str, Any]] = [
+                {"role": "user", "content": user_message}
+            ]
+
+            for iteration in range(self._max_iters):
+                adapter = AnthropicToAGUIAdapter()
+
+                async with self._anthropic.messages.stream(
+                    model=self._model,
+                    max_tokens=self._max_tokens,
+                    system=system_blocks,
+                    tools=tools,
+                    tool_choice={"type": "auto"},
+                    messages=messages,
+                ) as stream:
+                    async for event in stream:
+                        async for agui_event in adapter.adapt(event):
+                            yield agui_event
+
+                    final_message = await stream.get_final_message()
+
+                self._log_usage(final_message.usage, iteration)
+
+                if adapter.stop_reason != "tool_use":
+                    if adapter.stop_reason == "max_tokens":
+                        log.warning(
+                            "anthropic_response_truncated",
+                            message=f"Stream truncated at max_tokens on iteration {iteration}",
+                            iteration=iteration,
+                        )
+                    yield RunFinishedEvent(thread_id=thread_id, run_id=run_id)
+                    return
+
+                # Append assistant turn from final_message snapshot for next iteration
+                messages.append({"role": "assistant", "content": final_message.content})
+
+                # Execute each completed tool_use and emit a ToolCallResultEvent
+                tool_results: list[dict] = []
+                for tu in adapter.completed_tool_uses:
+                    try:
+                        args = json.loads(tu.input_json) if tu.input_json else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                        log.warning(
+                            "tool_input_json_invalid",
+                            message=f"Could not parse tool input JSON for {tu.name}",
+                            tool=tu.name,
+                            buffer=tu.input_json,
+                        )
+
+                    content, is_error = await self._mcp.call_tool(tu.name, args)
+                    yield ToolCallResultEvent(
+                        message_id=tu.id,
+                        tool_call_id=tu.id,
+                        content=content,
+                    )
+
+                    block: dict[str, Any] = {
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": content,
+                    }
+                    if is_error:
+                        block["is_error"] = True
+                    tool_results.append(block)
+
+                messages.append({"role": "user", "content": tool_results})
+
+            # Max iterations exceeded
+            yield RunErrorEvent(
+                message=f"Agent loop exceeded max_tool_iterations={self._max_iters}",
+                code="max_iterations",
+            )
+
+        except Exception as exc:
+            log.exception("agent_stream_failed", message=str(exc))
+            yield RunErrorEvent(message=str(exc), code="agent_error")
+            raise
 
     def _log_usage(self, usage: Any, iteration: int) -> None:
         """Log token usage including cache metrics. Cache verification hook."""
