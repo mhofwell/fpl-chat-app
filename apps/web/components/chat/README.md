@@ -1,54 +1,72 @@
-# Claude-like Chat Transition UI
+# Chat UI
 
-This implementation provides a smooth, animated transition experience similar to Claude's chat interface.
+The chat UI consumes AG-UI events from `POST /agent/run` on the Python
+agent-server and renders them with purple EPL styling. All streaming,
+tool-indicator, and auto-scroll behavior is wired through a custom
+`AgentSubscriber` that maps events to React state updates.
 
-## Features
+## Composition
 
-- **Smooth View Transitions**: Animated transition from composing view to conversation view
-- **Message Animations**: Messages appear with subtle fade-in and slide animations
-- **Streaming Support**: Built-in support for streaming responses with typing indicators
-- **Auto-scroll**: Automatically scrolls to the latest message
-- **Responsive Design**: Works on desktop and mobile devices
-
-## Components
-
-### ChatTransitionContainer
-The main orchestrator component that manages the view state and transitions.
-
-```tsx
-<ChatTransitionContainer
-  onSendMessage={handleSendMessage}
-  sampleQuestions={SAMPLE_QUESTIONS}
-  title="Let's make some picks"
-  subtitle="How can I help this season?"
-/>
+```
+ChatTransitionContainer             // owns HttpAgent + Supabase session
+  ↳ ComposingView                   // initial landing with textarea + sample prompts
+  ↳ ConversationView                // message list with smart auto-scroll
+      ↳ MessageBubble               // user or assistant; markdown for assistant
+      ↳ TypingIndicator             // animated dots
+      ↳ NewMessagesPill             // appears when user scrolls up mid-stream
+      ↳ MessageInputBar             // compact bottom input
 ```
 
-### ComposingView
-The initial view with a large, centered textarea for composing messages.
+All components are rendered by `ChatTransitionContainer` based on
+`viewState: 'composing' | 'conversation'`. Transitions use framer-motion.
 
-### ConversationView
-The chat view that displays messages and includes a compact input bar at the bottom.
+## Data flow
 
-### MessageInputBar
-A compact input component used in the conversation view.
+```
+user submits
+  ↓
+agentRef.current.addMessage({ id, role: "user", content })
+  ↓
+supabase.auth.getSession()         // fresh access token
+setAgentAuth(agent, token)         // attach to headers
+  ↓
+agent.runAgent({ runId, tools: [] }, subscriber)
+  ↓                                      ↓
+  HTTP POST /agent/run            subscriber callbacks fire as events arrive:
+  with Authorization: Bearer …      onMessageStart → new assistant bubble
+  body: { threadId, runId,          onTextDelta → append to bubble content
+          messages, … }              onToolStart → show "Looking up …"
+  ↓                                   onToolEnd   → hide indicator
+  SSE stream of AG-UI events        onFinish    → clear isStreaming
+                                     onError     → append error bubble
+```
 
-### TypingIndicator
-An animated typing indicator shown while the assistant is generating a response.
+## Smart auto-scroll
 
-## Animation Flow
+`ConversationView` tracks `isNearBottom` via a scroll listener on Radix's
+ScrollArea viewport (`[data-radix-scroll-area-viewport]`). When a new
+message arrives:
 
-1. **Initial State**: User sees `ComposingView` with large textarea
-2. **On Submit**: 
-   - Textarea slides down and fades out
-   - View transitions to `ConversationView`
-   - User message appears with fade-in animation
-   - Input bar appears at bottom
-3. **During Response**:
-   - Typing indicator shows while waiting
-   - Response streams in character by character
-   - Auto-scroll keeps new content in view
+- If the user is within 100px of the bottom → scroll smoothly.
+- Otherwise → set `hasUnread = true`, render `NewMessagesPill` at the
+  bottom. Clicking the pill scrolls to the bottom and clears the flag.
+
+This respects the user's intent to scroll up and re-read earlier messages
+during a long streaming response without yanking them back every delta.
+
+## Tool indicator
+
+`activeTool` is a component-level state shape `{ id, name } | null`. Set
+via `onToolStart` / cleared via `onToolEnd`. Rendered inside the
+conversation view as a small pulsing dot + "Looking up {tool_name}…"
+while a tool call is executing server-side.
 
 ## Customization
 
-All animations are defined in `animations/transitions.ts` and can be customized by modifying the animation configurations.
+- Animation variants live in `animations/transitions.ts`.
+- Message styling uses the app's Tailwind theme (`bg-primary`, `bg-surface`,
+  `ring-secondary`, etc.) so swapping to a different color palette only
+  requires editing the CSS variables.
+- `MessageBubble` renders assistant content through `react-markdown` +
+  `remark-gfm`. Code detection is block-vs-inline via the
+  `language-*` class (react-markdown v10 removed the `inline` prop).

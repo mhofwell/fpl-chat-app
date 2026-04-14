@@ -1,46 +1,90 @@
-# FPL Chat App
+# FPL Chat — Fantasy Premier League AI Assistant
 
-Portfolio-grade Fantasy Premier League chat assistant. Claude Sonnet answers
-deadline-pressure questions ("is Salah worth his price?", "Arsenal's next five
-fixtures", "should I sell Haaland?") with live FPL data, through a
-reusable FastMCP server and an AG-UI streaming frontend.
+![Version](https://img.shields.io/badge/phase-1-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Python](https://img.shields.io/badge/python-3.11-blue?logo=python) ![Next.js](https://img.shields.io/badge/next.js-16-black?logo=nextdotjs) ![Railway](https://img.shields.io/badge/deploy-Railway-blueviolet?logo=railway) ![Claude](https://img.shields.io/badge/model-claude--sonnet--4--5-red?logo=anthropic)
 
----
+FPL Chat is a portfolio-grade Fantasy Premier League assistant. It answers deadline-pressure questions — transfers, captaincy, fixture difficulty, team form — by grounding every response in live FPL data through a [FastMCP](https://gofastmcp.com) tool server, streaming over [AG-UI](https://ag-ui.dev) SSE into a Next.js UI, with Anthropic prompt caching, durable idempotent runs, and Supabase row-level security on user data.
 
-## Architecture
+This isn't a one-click template. It's a walkthrough of the architecture decisions that make an LLM chat app actually ship.
+
+## About Running FPL Chat
+
+Running FPL Chat requires three long-lived services and two managed dependencies. The backend holds a warm Redis cache of the FPL API (`bootstrap-static`, `fixtures`), runs APScheduler inside the FastAPI lifespan to refresh those caches hourly, and owns the Anthropic agent loop. The frontend is a thin Next.js consumer — it authenticates with Supabase, attaches the user's JWT to every request, and consumes AG-UI events from the backend's `POST /agent/run`.
+
+Railway handles the container lifecycle for both services and the Redis add-on. Supabase handles user auth and the `agent_runs` table that makes retries and reconnects safe. Configuration is per-service environment variables; the only manual step is applying a single SQL migration via the Supabase dashboard before the first deploy.
+
+## What It Can Answer
+
+| Question | Tool chain | What the model does |
+|----------|------------|--------------------|
+| **"How's Arsenal doing this season?"** | `get_teams` + `get_fixtures(scope="past")` | Narrates league position, recent W/D/L form, notable results |
+| **"Compare Salah and Saka."** | `get_players(ids=[...])` | Quotes the relevant section of each sectioned profile (scoring, form, ownership) side by side |
+| **"What are Liverpool's next 5 fixtures?"** | `get_fixtures(team_id, scope="upcoming", limit=5)` | Returns the fixtures from Liverpool's POV with FDR per opponent |
+| **"Top 10 midfielders by form."** | `get_players(position="MID", sort_by="form", limit=10)` | One-line-per-player ranked list with key stats |
+| **"Cheapest defenders with clean sheet upside."** | `get_players(position="DEF", sort_by="now_cost")` | Filters on position + price, reads clean sheet counts from the profile |
+| **"Is Haaland worth his £15m price tag?"** | `get_players(name="Haaland")` + `get_fixtures(team_id=..., scope="upcoming")` | Blends scoring section (goals, xG, xA) with upcoming FDR |
+| **"/team_briefing Tottenham"** (MCP prompt) | `get_teams` + `get_fixtures` ×2 + `get_players` | Renders a pre-fetched, format-enforced briefing (Position/Record/Form/Fixtures/Players/Bottom Line) |
+| **"/transfer_debate Haaland Isak"** (MCP prompt) | `get_players` ×2 + `get_fixtures` ×2 | Recommendation/Confidence/Reasoning/Risks/Alternatives with server-side data assembly |
+
+Response format is enforced by the prompt text, not trusted to the model's judgement. Prompts fetch their own data (up to 4 parallel tool calls) so the model only does analysis.
+
+## Dependencies for Hosting
+
+### Required — Agent Server
+
+- `CLAUDE_API_KEY` — Anthropic API key with Claude Sonnet access. Powers the agent loop.
+- `REDIS_URL` — `redis://default:<pass>@<host>:<port>`. Railway's Redis add-on provides this directly.
+- `SUPABASE_URL` — Your Supabase project URL (no trailing slash).
+- `SUPABASE_ANON_KEY` — Supabase anon key. The backend forwards the user's JWT on top of this so RLS enforces per-user access.
+- `CORS_ALLOWED_ORIGINS` — JSON array string (not comma-separated). Example: `'["https://your-web.railway.app"]'`.
+
+### Required — Web
+
+- `NEXT_PUBLIC_SUPABASE_URL` — same as `SUPABASE_URL` above.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — same as `SUPABASE_ANON_KEY` above.
+- `NEXT_PUBLIC_AGENT_SERVER_URL` — the deployed agent-server URL. The browser POSTs `/agent/run` here with the Supabase access token.
+
+### Optional
+
+- `LOG_LEVEL` — default `INFO`. Controls structlog output level.
+- `ANTHROPIC_MODEL` — default `claude-sonnet-4-5`.
+- `SUPABASE_JWT_ALGORITHM` — default `ES256` (post-April-2024 Supabase projects). Legacy projects sign with HS256 using a symmetric secret and are not supported by the default JWTVerifier wiring.
+- `FPL_API_BASE` — default `https://fantasy.premierleague.com/api`.
+
+### External Services
+
+- [Anthropic](https://console.anthropic.com) — Claude API access.
+- [Supabase](https://supabase.com) — auth + Postgres. Free tier is sufficient for Phase 1. Apply `apps/agent-server/migrations/001_agent_runs.sql` once via the SQL Editor.
+- [Railway](https://railway.app) — hosts the agent-server (Dockerfile), web (Nixpacks), and Redis add-on.
+
+## Implementation Details
+
+### Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Browser (React / Next.js 16, purple EPL theme)                   │
+│ Browser (Next.js / React 19 / Tailwind)                          │
 │  ├─ @ag-ui/client HttpAgent + custom AgentSubscriber             │
-│  └─ Supabase JS SDK (auth flows only)                            │
+│  └─ @supabase/ssr for auth                                       │
 └─────────┬───────────────────────────────────┬────────────────────┘
-          │ auth, pages                        │ POST /agent/run (SSE)
-          │                                    │ Authorization: Bearer <JWT>
+          │ auth pages                         │ POST /agent/run (SSE)
+          │                                    │ Authorization: Bearer <supabase JWT>
           ▼                                    ▼
 ┌──────────────────┐                 ┌────────────────────────────────┐
 │ Next.js (Railway)│                 │ Python Agent Server (Railway)  │
-│  Nixpacks build  │                 │  Python 3.11, FastAPI + uvicorn│
-│  /protected chat │                 │                                │
-│  /sign-in        │                 │  POST /agent/run   — AG-UI SSE │
-│  Supabase SSR    │                 │  POST /agent/chat/test         │
-└────────┬─────────┘                 │  GET  /health /ready /metrics  │
-         │                           │                                │
-         │ user/profile reads        │  In-process modules:           │
-         ▼                           │   ├─ FastMCP v3 (3 tools,      │
-┌──────────────────┐                 │   │   2 prompts, in-process    │
-│ Supabase         │◄────────────────┤   │   Client(transport=mcp))   │
-│ (managed)        │  user JWT →     │   ├─ Anthropic agent loop      │
-│  auth.users      │  agent_runs     │   │   (Claude Sonnet 4.5,      │
-│  agent_runs (RLS)│  RLS per user   │   │    prompt caching verified)│
-└──────────────────┘                 │   ├─ FPL data layer + Redis    │
-                                     │   │   cache-aside              │
-                                     │   ├─ AG-UI encoder             │
-                                     │   │   (Anthropic stream ↔ SSE) │
-                                     │   └─ APScheduler (hourly       │
-                                     │       bootstrap + fixtures)    │
-                                     └──────┬─────────────────────────┘
-                                            │
+│  Nixpacks        │                 │  Python 3.11 / FastAPI         │
+│  /protected      │                 │                                │
+│  /sign-in        │                 │  GET  /health /ready /metrics  │
+│  Supabase SSR    │                 │  POST /agent/run               │
+└────────┬─────────┘                 │                                │
+         │                           │  In-process:                   │
+         │ auth only                 │   FastMCP(3 tools, 2 prompts)  │
+         ▼                           │   Anthropic agent loop         │
+┌──────────────────┐                 │   + prompt caching             │
+│ Supabase         │◄────────────────┤   AG-UI encoder                │
+│ (managed)        │  user JWT →     │   FPL data layer               │
+│  auth.users      │  agent_runs     │   APScheduler (hourly refresh) │
+│  agent_runs (RLS)│  RLS per user   └──────┬─────────────────────────┘
+└──────────────────┘                        │
                                             ▼
                                    ┌──────────────────┐
                                    │ Redis (Railway)  │
@@ -49,188 +93,93 @@ reusable FastMCP server and an AG-UI streaming frontend.
                                    └──────────────────┘
 ```
 
-Three application services (Next.js web + Python agent + Redis). Supabase is a
-managed dependency for auth + `agent_runs` persistence. FPL data comes from the
-public Fantasy Premier League API, cached with versioned keys and refreshed
-hourly by an in-process APScheduler.
+### Agent Loop + Prompt Caching
 
----
+Every turn sends `system`, `tools`, and `messages` to Anthropic with `cache_control: {"type": "ephemeral"}` on two breakpoints: the last static system-prompt block (~2,700 tokens) and the last tool in the `tools` array. On iteration 1 of a fresh cache, these are _written_ and reported via `cache_creation_input_tokens`. On iteration 2+ and subsequent requests within the 1-hour TTL, they're _read_ and reported via `cache_read_input_tokens`.
 
-## What's interesting
+The cache counters are exported at `/metrics` as `anthropic_cache_write_tokens_total` and `anthropic_cache_read_tokens_total`. The load-bearing post-deploy check is that `cache_read_tokens_total` starts incrementing on the second request — otherwise the caching strategy isn't live, only theoretical.
 
-- **Reusable MCP artifact.** The FastMCP server is the tool + prompt registry:
-  three tools, two prompts, all called by the agent loop via an in-process
-  `Client(transport=mcp)` with zero network overhead. Phase 2 will mount the
-  same FastMCP instance at a public `/mcp` Streamable HTTP endpoint so
-  Claude Desktop can install it directly.
+The agent loop calls FastMCP tools through an in-process `Client(transport=mcp)` bridge. Zero network overhead for tool execution; the backend's own tool calls go through exactly the same path as a hypothetical external MCP client would.
 
-- **Anthropic prompt caching with verified cache hits.** `cache_control` is
-  applied to the last tool definition and the last static system-prompt block
-  (TTL 1h). `anthropic_cache_read_tokens_total` exposed at `/metrics` lets you
-  confirm the cache is working in production, not just in theory.
+### Durable Runs + Idempotency
 
-- **Durable idempotent agent runs.** Every `POST /agent/run` inserts a pending
-  row in `agent_runs` before hitting Anthropic. Retries with the same `run_id`
-  return a text replay (completed) or HTTP 409 (in-flight). Surviving
-  mid-stream disconnects and double-click submits is baked into the contract,
-  not bolted on.
+Every `POST /agent/run` begins with `INSERT INTO agent_runs (run_id, user_id, status, ...) ON CONFLICT (run_id) DO NOTHING RETURNING *`. The returned row dispatches the endpoint behavior:
 
-- **AG-UI streaming over SSE.** The adapter (`anthropic_to_agui.py`) is a
-  single ~200-line module that owns the Anthropic → AG-UI mapping. Spec drift
-  touches one file.
+- **New row, `status='pending'`** → claim via a guarded `UPDATE ... WHERE status='pending'`, check rows-affected (to close the race window between insert and claim), run the agent loop, finalize on completion.
+- **Existing row, `status='streaming'`** → HTTP 409. No wait-and-tail in Phase 1; the frontend surfaces "run was interrupted".
+- **Existing row, `status='completed'`** → stream back the stored `assistant_message_content` as a `RunStarted → TextMessage → RunFinished` replay. No new Anthropic call.
+- **Existing row, `status='failed'`** → stream `RunStarted → RunError` with the stored error.
 
-- **Row-Level Security on user data.** Supabase RLS policy on `agent_runs`
-  scopes reads + writes to the owner via `auth.uid()`. The Python backend
-  forwards the user's JWT to Supabase so its writes run under RLS, not as a
-  service role.
+The browser generates the `run_id` (UUID v4) before POSTing, so a double-click or retry hits the same row. A mid-stream disconnect leaves the row in `streaming` until a sweeper (Phase 2) runs; the frontend shows "run was interrupted" and the user can start a fresh turn.
 
-See [docs/design/2026-04-08-fpl-chat-rebuild.md](docs/design/2026-04-08-fpl-chat-rebuild.md)
-for the full design decisions.
+### Row-Level Security
 
----
+The `agent_runs` table has an RLS policy restricting `FOR ALL` operations to `user_id = auth.uid()`. The Python backend calls `client.postgrest.auth(token)` with each request's JWT, so Supabase applies the same `auth.uid()` check the frontend would. A per-request Supabase client (not a shared singleton) prevents concurrent requests from mutating each other's Authorization header.
 
-## Local development
-
-### Prerequisites
-
-- Python 3.11 (recommended via `uv python install 3.11`)
-- [uv](https://docs.astral.sh/uv/) — Python package manager
-- [Bun](https://bun.sh/) 1.2+ — Next.js runtime
-- Redis running locally (`redis://localhost:6379`)
-- A Supabase project with the migration at
-  `apps/agent-server/migrations/001_agent_runs.sql` applied (paste it into
-  the Supabase SQL Editor)
-- An Anthropic API key with Claude Sonnet 4.5 access
-
-### Setup
+### Local Development
 
 ```bash
-# 1. Backend
+# One-time setup
+uv python install 3.11
+
+# Backend
 cd apps/agent-server
 uv sync
-
 cat > .env <<EOF
 CLAUDE_API_KEY=<your key>
 REDIS_URL=redis://localhost:6379
 SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_ANON_KEY=<your anon key>
-SUPABASE_JWT_ALGORITHM=ES256
 CORS_ALLOWED_ORIGINS=["http://localhost:3000"]
 EOF
+uv run uvicorn fpl_agent.main:app --port 8000
 
-# 2. Frontend
-cd ../web
+# Frontend (separate terminal)
+cd apps/web
 bun install
-
 cat > .env.local <<EOF
 NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<your anon key>
 NEXT_PUBLIC_AGENT_SERVER_URL=http://localhost:8000
 EOF
-```
-
-### Run
-
-```bash
-# Terminal 1
-cd apps/agent-server
-uv run uvicorn fpl_agent.main:app --port 8000
-
-# Terminal 2
-cd apps/web
 bun run dev
 ```
 
-Browse to http://localhost:3000, sign up / sign in, land on `/protected`,
-chat.
+Before the first request: apply `apps/agent-server/migrations/001_agent_runs.sql` via the Supabase SQL Editor, and have Redis running on `localhost:6379`.
 
-### Tests
+### Testing
 
 ```bash
-cd apps/agent-server && uv run pytest
-cd apps/web && bun run build   # type-check + production build
+cd apps/agent-server && uv run pytest    # 90 tests
+cd apps/web && bun run build             # TypeScript strict + production build
 ```
 
----
+### First-Deploy Checklist
 
-## Deploy (Railway)
+1. Apply `apps/agent-server/migrations/001_agent_runs.sql` in Supabase SQL Editor.
+2. Create Railway services: agent-server (Dockerfile), web (Nixpacks), Redis add-on.
+3. Set env vars per service from the tables above.
+4. Deploy agent-server first, note its URL, set `NEXT_PUBLIC_AGENT_SERVER_URL` on web, deploy web.
+5. Update `CORS_ALLOWED_ORIGINS` on agent-server to the web's Railway URL.
+6. Walk the smoke-test matrix in [`docs/plans/2026-04-08-phase-1-smoke-results.md`](docs/plans/2026-04-08-phase-1-smoke-results.md) and fill in verdicts.
 
-Three Railway services:
+## Phase 1 Scope
 
-| Service       | Source               | Build        | Health         |
-|---------------|----------------------|--------------|----------------|
-| `agent-server`| `apps/agent-server/` | Dockerfile   | `/health`      |
-| `web`         | `apps/web/`          | Nixpacks     | `/`            |
-| `redis`       | Railway add-on       | —            | (managed)      |
+Phase 1 ships the decision-engine primitives: three tools, two prompts, streaming chat, durable runs. Explicitly out of scope for Phase 1, shipped in later phases:
 
-Supabase is managed outside Railway.
+- **No public `/mcp` HTTP endpoint** — the FastMCP server is used in-process only. Phase 2 mounts it at `/mcp` so Claude Desktop can install it.
+- **No MCP Resources** — pinned context (current gameweek, user team) comes via the dynamic system-prompt prelude, not resource subscriptions.
+- **No Postgres historical tier** — bootstrap and fixtures live in Redis only. Gameweek-by-gameweek history ("who had the biggest xG overperform last 5 GWs") isn't answerable until Phase 2b.
+- **No multi-chat persistence** — each browser session is one thread; refresh starts fresh. `agent_runs` exists solely for idempotency and mid-stream durability.
+- **No live match tracking** — resource subscriptions for in-play updates land in Phase 2b.
 
-### Env vars
+## Why Deploy FPL Chat on Railway?
 
-**Agent server:**
-
-| Variable              | Required | Example                                  |
-|-----------------------|----------|------------------------------------------|
-| `CLAUDE_API_KEY`      | yes      | `sk-ant-...`                             |
-| `REDIS_URL`           | yes      | `redis://default:...@redis.railway:6379` |
-| `SUPABASE_URL`        | yes      | `https://xxx.supabase.co`                |
-| `SUPABASE_ANON_KEY`   | yes      | Supabase anon key                        |
-| `SUPABASE_JWT_ALGORITHM` | no    | `ES256` (default) — legacy pre-2024 projects use `HS256` and require a different JWTVerifier setup (not supported out of the box) |
-| `CORS_ALLOWED_ORIGINS`| yes      | `["https://<web>.railway.app"]`          |
-| `LOG_LEVEL`           | no       | `INFO` (default)                         |
-| `ANTHROPIC_MODEL`     | no       | `claude-sonnet-4-5` (default)            |
-
-**Next.js:**
-
-| Variable                        | Required | Example                                |
-|---------------------------------|----------|----------------------------------------|
-| `NEXT_PUBLIC_SUPABASE_URL`      | yes      | `https://xxx.supabase.co`              |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes      | Supabase anon key                      |
-| `NEXT_PUBLIC_AGENT_SERVER_URL`  | yes      | `https://<agent-server>.railway.app`   |
-
-### First-deploy checklist
-
-1. Supabase: apply `apps/agent-server/migrations/001_agent_runs.sql` once via
-   the SQL Editor
-2. Railway: create the three services, set env vars, deploy
-3. Smoke test: sign in on the web app, send "How is Arsenal doing?", confirm
-   an `agent_runs` row appears with `status='completed'`
-4. Cache verification: issue a second question, confirm the `/metrics`
-   endpoint shows `anthropic_cache_read_tokens_total > 0`
-
-Smoke test outcomes get recorded in
-[docs/plans/2026-04-08-phase-1-smoke-results.md](docs/plans/2026-04-08-phase-1-smoke-results.md).
-
----
-
-## Phase 1 scope and known limitations
-
-Phase 1 ships the decision-engine primitives: three tools, two prompts,
-streaming chat, durable runs. Things explicitly **out of scope** for
-Phase 1:
-
-- **No MCP Resources** — pinned context (current gameweek, user team) is
-  injected via the dynamic system-prompt prelude, not resource subscriptions.
-- **Single-replica backend.** APScheduler runs in-process; multi-replica
-  would double-refresh. Horizontal scaling requires leader election
-  (Redis-based lock or a dedicated scheduler service) first.
-- **No multi-chat persistence.** Each browser session is one thread; refresh
-  starts fresh. `agent_runs` is solely for idempotency + mid-stream durability.
-- **No Postgres historical tier.** Bootstrap + fixtures live in Redis only;
-  gameweek-by-gameweek history queries ("who had the biggest xG overperform
-  last 5 GWs") aren't answerable until Phase 2b adds a historical table.
-- **No betting / gambling responses.** Explicit refusal in the system prompt.
-
-Phase 2a and later add Resources, Postgres historical data, live match
-tracking, and the Claude Desktop install flow.
-
----
+Railway runs the three-service architecture (agent-server, web, Redis) as a coherent stack. A single dashboard shows logs from both services, the Redis add-on is a checkbox rather than a connection string you manage, and environment variables flow through the template without file juggling. The single-replica scheduler constraint (APScheduler in the FastAPI lifespan — every replica would double-refresh) maps directly onto Railway's `numReplicas = 1` setting in `railway.toml`, so the invariant the design doc calls load-bearing is enforced at the infrastructure level.
 
 ## Links
 
-- [Design doc](docs/design/2026-04-08-fpl-chat-rebuild.md) — architecture
-  decisions and trade-offs
-- [Phase 1 plan](docs/plans/2026-04-08-phase-1-implementation.md) — milestone
-  breakdown
-- [Smoke test results](docs/plans/2026-04-08-phase-1-smoke-results.md) —
-  post-deploy verification log
+- [Design doc](docs/design/2026-04-08-fpl-chat-rebuild.md) — architecture bets, trade-offs, risks
+- [Phase 1 plan](docs/plans/2026-04-08-phase-1-implementation.md) — milestone breakdown (M0–M8)
+- [Smoke test results](docs/plans/2026-04-08-phase-1-smoke-results.md) — post-deploy verification log
+- [FastMCP](https://gofastmcp.com) · [AG-UI](https://ag-ui.dev) · [Anthropic prompt caching](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching) · [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
