@@ -175,7 +175,7 @@ Supabase is managed outside Railway.
 | `REDIS_URL`           | yes      | `redis://default:...@redis.railway:6379` |
 | `SUPABASE_URL`        | yes      | `https://xxx.supabase.co`                |
 | `SUPABASE_ANON_KEY`   | yes      | Supabase anon key                        |
-| `SUPABASE_JWT_ALGORITHM` | no    | `ES256` (default); legacy projects use `RS256` |
+| `SUPABASE_JWT_ALGORITHM` | no    | `ES256` (default) — legacy pre-2024 projects use `HS256` and require a different JWTVerifier setup (not supported out of the box) |
 | `CORS_ALLOWED_ORIGINS`| yes      | `["https://<web>.railway.app"]`          |
 | `LOG_LEVEL`           | no       | `INFO` (default)                         |
 | `ANTHROPIC_MODEL`     | no       | `claude-sonnet-4-5` (default)            |

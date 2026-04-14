@@ -33,20 +33,3 @@ export interface MessageInputBarProps {
 }
 
 export type ChatViewState = 'composing' | 'conversation';
-
-// ---- Error handling ----
-
-export type ErrorType =
-    | 'rate_limit'
-    | 'network'
-    | 'invalid_request'
-    | 'server_error'
-    | 'unauthorized'
-    | 'unknown';
-
-export interface ErrorResponse {
-    error: string;
-    type: ErrorType;
-    retryable: boolean;
-    userMessage: string;
-}

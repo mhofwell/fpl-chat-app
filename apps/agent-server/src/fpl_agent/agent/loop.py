@@ -1,7 +1,7 @@
 """Anthropic agent loop with in-process FastMCP tool execution.
 
 Two entry points:
-- `run()` — non-streaming, returns AgentRunResult. Used by /agent/chat/test.
+- `run()` — non-streaming, returns AgentRunResult. Kept for unit tests.
 - `run_stream()` — async generator yielding AG-UI events. Used by /agent/run.
 
 Both share the same multi-iteration agent loop pattern. The streaming
@@ -190,13 +190,13 @@ class AgentLoop:
         When `supabase` is provided (M4b), persists run state to agent_runs:
         marks streaming on entry, appends tool events per tool call,
         finalizes on success, fails on exception. When supabase is None,
-        the loop runs without persistence (still used by /agent/chat/test).
+        the loop runs without persistence (used by unit tests).
 
         When `conversation_history` is provided (M6), it's used as the
         initial messages payload instead of a single-turn user message.
         The history is expected to END with the current user turn (as the
         /agent/run endpoint constructs it). Falls back to a fresh [user]
-        history when None (used by /agent/chat/test + unit tests).
+        history when None (used by unit tests).
         """
         yield RunStartedEvent(thread_id=thread_id, run_id=run_id)
 

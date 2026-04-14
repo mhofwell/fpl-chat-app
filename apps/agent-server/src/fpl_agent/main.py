@@ -1,11 +1,10 @@
 """FPL Agent Server — FastAPI application entry point.
 
 Endpoints:
-  GET  /health          — liveness probe (200 if process is alive)
-  GET  /ready           — readiness probe (cache + scheduler + agent_loop)
-  GET  /metrics         — Prometheus exposition of the 6 Phase 1 counters
-  POST /agent/run       — AG-UI SSE streaming chat (JWT-auth'd, persisted)
-  POST /agent/chat/test — non-streaming test endpoint (no auth)
+  GET  /health    — liveness probe (200 if process is alive)
+  GET  /ready     — readiness probe (cache + scheduler + agent_loop)
+  GET  /metrics   — Prometheus exposition of the 6 Phase 1 counters
+  POST /agent/run — AG-UI SSE streaming chat (JWT-auth'd, persisted)
 
 Middleware stack (outer to inner):
   request_id_middleware  — reads/generates X-Request-Id, binds to structlog
@@ -23,12 +22,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from anthropic import AsyncAnthropic
 from fastmcp.server.auth.providers.jwt import JWTVerifier
-from supabase import create_client
 
 import fpl_agent.deps as deps
 from fpl_agent.agent.loop import AgentLoop
 from fpl_agent.agent.mcp_bridge import McpBridge
-from fpl_agent.api import agent, chat, health
+from fpl_agent.api import agent, health
 from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger, setup_logging
 from fpl_agent.middleware import request_id_middleware
@@ -58,9 +56,19 @@ async def lifespan(app: FastAPI):
     import fpl_agent.mcp.tools  # noqa: F401
     import fpl_agent.mcp.prompts  # noqa: F401
 
-    # Prime cache on startup
-    await get_bootstrap(cache, client)
-    await get_all_fixtures(cache, client)
+    # Prime cache on startup. Redis or FPL API outages during boot are
+    # tolerated — the scheduler re-primes on the next hourly tick and tools
+    # fall through to the FPL API on cache miss. A cold start without this
+    # is slow, not broken.
+    try:
+        await get_bootstrap(cache, client)
+        await get_all_fixtures(cache, client)
+    except Exception as exc:
+        log.warning(
+            "cache_prime_failed",
+            message=f"Startup cache prime failed; continuing without pre-warmed cache: {exc}",
+            error=str(exc),
+        )
 
     # Initialize the Anthropic agent loop
     anthropic_client = AsyncAnthropic(api_key=settings.claude_api_key)
@@ -85,12 +93,9 @@ async def lifespan(app: FastAPI):
             audience="authenticated",
             algorithm=settings.supabase_jwt_algorithm,
         )
-        deps.supabase_client = create_client(
-            settings.supabase_url, settings.supabase_anon_key
-        )
         log.info(
             "supabase_ready",
-            message=f"Supabase JWT verifier + shared client initialized for {issuer}",
+            message=f"Supabase JWT verifier initialized for {issuer}",
         )
     else:
         log.warning(
@@ -105,7 +110,6 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     scheduler.shutdown(wait=False)
-    deps.supabase_client = None
     deps.jwt_verifier = None
     deps.agent_loop = None
     deps.cache = None
@@ -132,5 +136,4 @@ app.add_middleware(
 )
 app.middleware("http")(request_id_middleware)
 app.include_router(health.router)
-app.include_router(chat.router)
 app.include_router(agent.router)

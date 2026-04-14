@@ -40,10 +40,16 @@ class Settings(BaseSettings):
     # Supabase — JWT auth + agent_runs persistence
     supabase_url: str = ""  # e.g., "https://xxx.supabase.co" (no trailing slash)
     supabase_anon_key: str = ""  # anon key for user-scoped writes with forwarded JWT
-    supabase_jwt_algorithm: str = "ES256"  # Supabase default; legacy projects use RS256
+    # Post-April-2024 Supabase projects sign JWTs with ES256 via JWKS.
+    # Legacy projects (pre-April 2024) use HS256 with a symmetric secret —
+    # those need a different JWTVerifier setup (static public_key) and are
+    # not supported by this default wiring.
+    supabase_jwt_algorithm: str = "ES256"
 
-    # CORS — allowed browser origins for /agent/run
-    # Comma-separated string when loaded from env (pydantic-settings splits it).
+    # CORS — allowed browser origins for /agent/run.
+    # Must be a JSON array string in env, e.g.
+    #   CORS_ALLOWED_ORIGINS='["https://web.example.com"]'
+    # (pydantic-settings parses list[str] env vars as JSON, NOT comma-separated.)
     cors_allowed_origins: list[str] = ["http://localhost:3000"]
 
 

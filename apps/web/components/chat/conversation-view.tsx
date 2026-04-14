@@ -7,7 +7,7 @@ import { transitions } from './animations/transitions';
 import { MessageInputBar } from './message-input-bar';
 import { cn } from '@/lib/utils';
 import { TypingIndicator } from './typing-indicator';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, ConversationViewProps } from '@/lib/types/fpl-types';
@@ -102,18 +102,22 @@ function MessageBubble({
                                     ul: ({ children }) => <ul className="mb-2 ml-4 list-disc">{children}</ul>,
                                     ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal">{children}</ol>,
                                     li: ({ children }) => <li className="mb-1">{children}</li>,
-                                    code: ({ node, inline, className, children, ...props }: any) =>
-                                        inline ? (
-                                            <code className="px-1 py-0.5 rounded bg-muted text-sm" {...props}>
-                                                {children}
-                                            </code>
-                                        ) : (
+                                    code: ({ className, children, ...props }: any) => {
+                                        // react-markdown v10 removed the `inline` prop; detect
+                                        // block code by the presence of a language-* class.
+                                        const isBlock = /language-/.test(className || '');
+                                        return isBlock ? (
                                             <pre className="p-2 rounded bg-muted overflow-x-auto">
-                                                <code className="text-sm" {...props}>
+                                                <code className={className} {...props}>
                                                     {children}
                                                 </code>
                                             </pre>
-                                        ),
+                                        ) : (
+                                            <code className="px-1 py-0.5 rounded bg-muted text-sm" {...props}>
+                                                {children}
+                                            </code>
+                                        );
+                                    },
                                     blockquote: ({ children }) => (
                                         <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic">
                                             {children}

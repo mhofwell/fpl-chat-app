@@ -12,9 +12,10 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import HTTPException, Request
-from supabase import Client
+from supabase import Client, create_client
 
 import fpl_agent.deps as deps
+from fpl_agent.config import settings
 from fpl_agent.log_config import get_logger
 
 log = get_logger(__name__)
@@ -60,16 +61,20 @@ async def get_current_user(request: Request) -> UUID:
 def get_user_supabase_client(request: Request) -> Client:
     """FastAPI dependency: return a Supabase client scoped to the current user.
 
-    Reuses the singleton client created at lifespan startup, attaching the
-    user's JWT to its PostgREST calls so RLS policies enforce per-user
-    access. The .postgrest.auth() call is idempotent and does no IO —
-    safe to invoke per request without leaking connection pools.
+    A fresh client is created per request so concurrent requests can't mutate
+    each other's Authorization header — the previous singleton implementation
+    allowed cross-user token contamination because postgrest.auth() mutates
+    shared state.
+
+    Client construction is cheap (~6ms). The httpx.Client connection pool is
+    short-lived; Python's GC closes it when the FastAPI dependency scope ends.
     """
-    if deps.supabase_client is None:
+    if not settings.supabase_url or not settings.supabase_anon_key:
         raise HTTPException(
-            status_code=503, detail="Supabase client not initialized"
+            status_code=503, detail="Supabase URL / anon key not configured"
         )
 
     token = _extract_bearer_token(request)
-    deps.supabase_client.postgrest.auth(token)
-    return deps.supabase_client
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
+    client.postgrest.auth(token)
+    return client
