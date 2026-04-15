@@ -2,6 +2,10 @@
   "name": "fpl-chat-web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "bun@1.2.14",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
