@@ -11,9 +11,9 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata = {
     metadataBase: new URL(defaultUrl),
-    title: 'Your FPL Assistant',
+    title: 'ChatFPL',
     description:
-        'AI-powered Fantasy Premier League assistant to help with your FPL decisions',
+        'AI-powered Fantasy Premier League assistant — transfers, captaincy, fixtures, covered.',
 };
 
 const inter = Inter({
@@ -66,7 +66,7 @@ export default function RootLayout({
                                         href="/"
                                         className="text-xl font-bold font-header hover:text-muted-foreground transition-colors"
                                     >
-                                        Chat FPL
+                                        ChatFPL
                                     </Link>
                                 </div>
                             </div>
